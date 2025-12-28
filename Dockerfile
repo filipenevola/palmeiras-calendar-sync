@@ -11,5 +11,8 @@ RUN bun install --production --frozen-lockfile
 # Copy source code
 COPY src/ ./src/
 
-# Run the sync script
+# Expose port
+EXPOSE 3000
+
+# Run the server
 CMD ["bun", "run", "src/index.js"]

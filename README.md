@@ -4,6 +4,8 @@ Automatically sync Palmeiras fixtures to your Google Calendar using API-Football
 
 ## Features
 
+- 🌐 **Web Dashboard** - Simple UI to view sync status and trigger manual syncs
+- 📊 **Enhanced Logging** - Detailed logs stored in `/tmp` for debugging
 - 🔄 Daily automatic sync via GitHub Actions
 - 📅 Creates/updates Google Calendar events
 - 🏠 Shows home (🏠) vs away (✈️) games
@@ -75,12 +77,29 @@ The app is configured to deploy automatically to Quave Cloud via GitHub Actions.
 - **Automatic**: Pushing to `main` branch triggers deployment via GitHub Actions
 - **Manual**: Use the "Run workflow" button in the GitHub Actions tab
 
+## Web Dashboard
+
+Once deployed, the app includes a web dashboard accessible at your app's URL:
+
+- **View Status**: See the latest sync run details, including:
+  - Number of fixtures found
+  - Events created/updated
+  - Any errors encountered
+  - Execution duration and timestamps
+- **Trigger Sync**: Click the button to manually trigger a new sync
+- **Auto-refresh**: Status updates every 10 seconds
+
+The dashboard is available at the root URL of your deployed app (e.g., `https://your-app-url.zcloud.ws/`).
+
 ## Manual Sync
 
-You can trigger a manual sync:
-1. Go to Actions tab in GitHub
-2. Select "Palmeiras Calendar Sync"
-3. Click "Run workflow"
+You can trigger a manual sync in two ways:
+
+1. **Via Web Dashboard**: Visit your app URL and click "Executar Sincronização"
+2. **Via GitHub Actions**:
+   - Go to Actions tab in GitHub
+   - Select "Palmeiras Calendar Sync"
+   - Click "Run workflow"
 
 ## Local Development
 
@@ -98,8 +117,14 @@ export API_FOOTBALL_KEY="your-key"
 export GOOGLE_CREDENTIALS="base64-encoded-credentials"
 export GOOGLE_CALENDAR_ID="your-calendar-id"
 
-# Run sync
-bun run sync
+# Start the web server (includes dashboard)
+bun run start
+
+# The server will be available at http://localhost:3000
+# You can also trigger syncs via the web UI or API:
+# - GET /api/status - Get latest sync status
+# - POST /api/sync - Trigger a new sync
+# - GET /health - Health check endpoint
 ```
 
 ## License
