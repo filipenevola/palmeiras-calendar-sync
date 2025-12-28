@@ -38,11 +38,17 @@ Automatically sync Palmeiras fixtures to your Google Calendar using API-Football
 5. Copy the calendar ID (for your primary calendar, use your email)
 6. Add as GitHub secret: `GOOGLE_CALENDAR_ID`
 
-### 4. Quave Cloud Deployment (Optional)
+### 4. Quave Cloud Deployment
 
-1. Get your user token from [Quave Cloud Profile](https://app.quave.cloud/profile)
-2. Add as GitHub secret: `ZCLOUD_USER_TOKEN`
-3. Create an app environment named `filipenevola-palmeiras-calendar-sync`
+The app is configured to deploy automatically to Quave Cloud via GitHub Actions.
+
+1. Add your Quave Cloud environment token as a GitHub secret:
+   - Go to your repository **Settings** > **Secrets and variables** > **Actions**
+   - Click **New repository secret**
+   - Name: `ZCLOUD_USER_TOKEN`
+   - Value: Your environment token (get it from [Quave Cloud](https://app.quave.cloud))
+2. The GitHub Actions workflow will automatically deploy when you push to `main`
+3. App environment: `filipenevola-palmeiras-calendar-sync-production`
 
 ### GitHub Secrets Required
 
@@ -51,11 +57,11 @@ Automatically sync Palmeiras fixtures to your Google Calendar using API-Football
 | `API_FOOTBALL_KEY` | API-Football API key |
 | `GOOGLE_CREDENTIALS` | Base64 encoded service account JSON |
 | `GOOGLE_CALENDAR_ID` | Google Calendar ID (or `primary`) |
-| `ZCLOUD_USER_TOKEN` | Quave Cloud user token (optional) |
+| `ZCLOUD_USER_TOKEN` | Quave Cloud environment token (required for deployment) |
 
 ## How It Works
 
-1. GitHub Actions runs daily at 6 AM UTC
+1. The app runs on Quave Cloud and syncs Palmeiras fixtures to your Google Calendar
 2. Fetches upcoming Palmeiras fixtures from API-Football
 3. Creates/updates events in your Google Calendar
 4. Each event includes:
@@ -63,6 +69,11 @@ Automatically sync Palmeiras fixtures to your Google Calendar using API-Football
    - Competition name and round
    - Venue information
    - Automatic reminders
+
+### Deployment
+
+- **Automatic**: Pushing to `main` branch triggers deployment via GitHub Actions
+- **Manual**: Use the "Run workflow" button in the GitHub Actions tab
 
 ## Manual Sync
 
