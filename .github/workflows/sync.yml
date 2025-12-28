@@ -1,0 +1,36 @@
+name: Palmeiras Calendar Sync
+
+on:
+  # Run daily at 10 AM UTC (7 AM São Paulo time)
+  schedule:
+    - cron: '0 10 * * *'
+  
+  # Allow manual trigger
+  workflow_dispatch:
+  
+  # Also run on push to test
+  push:
+    branches: ['main']
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+      
+      - name: Install dependencies
+        run: npm ci
+      
+      - name: Run Palmeiras Calendar Sync
+        env:
+          API_FOOTBALL_KEY: ${{ secrets.API_FOOTBALL_KEY }}
+          GOOGLE_CREDENTIALS: ${{ secrets.GOOGLE_CREDENTIALS }}
+          GOOGLE_CALENDAR_ID: ${{ secrets.GOOGLE_CALENDAR_ID }}
+        run: npm run sync
