@@ -84,9 +84,14 @@ You can trigger a manual sync:
 
 ## Local Development
 
+This project uses [Bun](https://bun.sh) for fast JavaScript runtime and package management.
+
 ```bash
+# Install Bun (if not already installed)
+curl -fsSL https://bun.sh/install | bash
+
 # Install dependencies
-npm install
+bun install
 
 # Set environment variables
 export API_FOOTBALL_KEY="your-key"
@@ -94,7 +99,7 @@ export GOOGLE_CREDENTIALS="base64-encoded-credentials"
 export GOOGLE_CALENDAR_ID="your-calendar-id"
 
 # Run sync
-npm run sync
+bun run sync
 ```
 
 ## License

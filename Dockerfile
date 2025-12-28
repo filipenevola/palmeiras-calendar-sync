@@ -1,15 +1,15 @@
-FROM node:20-alpine
+FROM oven/bun:latest
 
 WORKDIR /app
 
 # Copy package files
-COPY package*.json ./
+COPY package.json bun.lock* ./
 
 # Install dependencies
-RUN npm ci --only=production
+RUN bun install --production --frozen-lockfile
 
 # Copy source code
 COPY src/ ./src/
 
 # Run the sync script
-CMD ["node", "src/index.js"]
+CMD ["bun", "run", "src/index.js"]

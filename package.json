@@ -5,8 +5,8 @@
   "main": "src/index.js",
   "type": "module",
   "scripts": {
-    "start": "node src/index.js",
-    "sync": "node src/index.js"
+    "start": "bun run src/index.js",
+    "sync": "bun run src/index.js"
   },
   "keywords": ["palmeiras", "calendar", "football", "api-football"],
   "author": "Filipe Névola",
