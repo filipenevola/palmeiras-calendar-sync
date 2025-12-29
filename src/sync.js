@@ -15,43 +15,86 @@ async function findPalmeirasTeamId() {
   try {
     logger.info('[SYNC] Searching for Palmeiras team ID...');
     
-    // Try multiple search terms
-    const searchTerms = ['Palmeiras', 'SE Palmeiras', 'Sociedade Esportiva Palmeiras'];
+    // Try searching Brazilian Serie A competition (BSA) - competition ID 2013
+    // First, get teams from Brazilian Serie A
+    const competitionId = 2013; // Brazilian Serie A
+    const url = `https://api.football-data.org/v4/competitions/${competitionId}/teams`;
+    logger.info(`[SYNC] Searching in Brazilian Serie A (competition ${competitionId})...`);
+    
+    const response = await fetch(url, {
+      headers: {
+        'X-Auth-Token': FOOTBALL_DATA_API_KEY,
+        'Accept': 'application/json'
+      }
+    });
+    
+    if (response.ok) {
+      const data = await response.json();
+      if (data.teams && data.teams.length > 0) {
+        logger.info(`[SYNC] Found ${data.teams.length} teams in Brazilian Serie A`);
+        
+        // Look for Palmeiras
+        const palmeiras = data.teams.find(t => {
+          const name = (t.name || '').toLowerCase();
+          const shortName = (t.shortName || '').toLowerCase();
+          const tla = (t.tla || '').toLowerCase();
+          const areaName = (t.area?.name || '').toLowerCase();
+          
+          return name.includes('palmeiras') || 
+                 shortName.includes('palmeiras') || 
+                 tla === 'pal' ||
+                 name.includes('sociedade esportiva palmeiras') ||
+                 (areaName === 'brazil' && (name.includes('palmeiras') || tla === 'pal'));
+        });
+        
+        if (palmeiras) {
+          logger.info(`[SYNC] Found Palmeiras team: ${palmeiras.name} (ID: ${palmeiras.id}, TLA: ${palmeiras.tla})`);
+          return palmeiras.id;
+        }
+        
+        // Log all Brazilian teams found for debugging
+        logger.info('[SYNC] Brazilian Serie A teams found:');
+        data.teams.slice(0, 10).forEach(team => {
+          logger.info(`[SYNC]   - ${team.name} (ID: ${team.id}, TLA: ${team.tla})`);
+        });
+      }
+    } else {
+      logger.warn(`[SYNC] Failed to fetch Brazilian Serie A teams: ${response.status}`);
+    }
+    
+    // Fallback: Try direct team search with more specific terms
+    logger.info('[SYNC] Trying direct team search...');
+    const searchTerms = ['Palmeiras'];
     
     for (const term of searchTerms) {
-      const url = `https://api.football-data.org/v4/teams?name=${encodeURIComponent(term)}`;
-      const response = await fetch(url, {
+      const searchUrl = `https://api.football-data.org/v4/teams?name=${encodeURIComponent(term)}`;
+      const searchResponse = await fetch(searchUrl, {
         headers: {
           'X-Auth-Token': FOOTBALL_DATA_API_KEY,
           'Accept': 'application/json'
         }
       });
       
-      if (response.ok) {
-        const data = await response.json();
-        if (data.teams && data.teams.length > 0) {
-          logger.info(`[SYNC] Found ${data.teams.length} teams matching "${term}"`);
+      if (searchResponse.ok) {
+        const searchData = await searchResponse.json();
+        if (searchData.teams && searchData.teams.length > 0) {
+          // Filter for Brazilian teams only
+          const brazilianTeams = searchData.teams.filter(t => 
+            (t.area?.name || '').toLowerCase() === 'brazil'
+          );
           
-          // Look for Palmeiras in various forms
-          const palmeiras = data.teams.find(t => {
-            const name = (t.name || '').toLowerCase();
-            const shortName = (t.shortName || '').toLowerCase();
-            const tla = (t.tla || '').toLowerCase();
-            return name.includes('palmeiras') || 
-                   shortName.includes('palmeiras') || 
-                   tla === 'pal' ||
-                   name.includes('sociedade esportiva palmeiras');
-          });
-          
-          if (palmeiras) {
-            logger.info(`[SYNC] Found Palmeiras team: ${palmeiras.name} (ID: ${palmeiras.id}, TLA: ${palmeiras.tla})`);
-            return palmeiras.id;
+          if (brazilianTeams.length > 0) {
+            logger.info(`[SYNC] Found ${brazilianTeams.length} Brazilian teams matching "${term}"`);
+            const palmeiras = brazilianTeams.find(t => {
+              const name = (t.name || '').toLowerCase();
+              return name.includes('palmeiras');
+            });
+            
+            if (palmeiras) {
+              logger.info(`[SYNC] Found Palmeiras team: ${palmeiras.name} (ID: ${palmeiras.id}, TLA: ${palmeiras.tla})`);
+              return palmeiras.id;
+            }
           }
-          
-          // Log all teams found for debugging
-          data.teams.slice(0, 5).forEach(team => {
-            logger.info(`[SYNC] Team found: ${team.name} (ID: ${team.id}, TLA: ${team.tla})`);
-          });
         }
       }
     }
