@@ -1,18 +1,19 @@
 {
   "name": "palmeiras-calendar-sync",
   "version": "1.0.0",
-  "description": "Sync Palmeiras fixtures to Google Calendar using Football-Data.org API",
+  "description": "Sync Palmeiras fixtures to Google Calendar by scraping ptd.verdao.net",
   "main": "src/index.js",
   "type": "module",
   "scripts": {
     "start": "bun run src/index.js",
     "sync": "bun run src/index.js"
   },
-  "keywords": ["palmeiras", "calendar", "football", "football-data.org"],
+  "keywords": ["palmeiras", "calendar", "football", "scraper", "verdao.net"],
   "author": "Filipe Névola",
   "license": "MIT",
   "dependencies": {
     "@quave/logger": "^1.0.1",
+    "cheerio": "^1.1.2",
     "googleapis": "^144.0.0",
     "node-cron": "^3.0.3"
   }
