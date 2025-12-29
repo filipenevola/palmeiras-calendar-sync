@@ -167,22 +167,26 @@ const HTML = `
       right: 20px;
       background: #dc3545;
       color: white;
-      border: none;
-      padding: 8px 12px;
-      font-size: 0.75em;
-      border-radius: 6px;
+      border: 2px solid #fff;
+      padding: 12px 16px;
+      font-size: 0.85em;
+      border-radius: 8px;
       cursor: pointer;
-      font-weight: 500;
-      transition: background 0.3s;
-      box-shadow: 0 2px 8px rgba(0,0,0,0.2);
+      font-weight: 600;
+      transition: all 0.3s;
+      box-shadow: 0 4px 12px rgba(220, 53, 69, 0.4);
       z-index: 1000;
+      opacity: 1;
     }
     .test-error-btn:hover:not(:disabled) {
       background: #c82333;
+      transform: scale(1.05);
+      box-shadow: 0 6px 16px rgba(220, 53, 69, 0.5);
     }
     .test-error-btn:disabled {
       background: #6c757d;
       cursor: not-allowed;
+      transform: none;
     }
   </style>
 </head>
