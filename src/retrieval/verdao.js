@@ -52,6 +52,65 @@ async function fetchHTML(url, retries = 3) {
   throw new Error(`Failed to fetch HTML after ${retries} attempts`);
 }
 
+/**
+ * Creates a Date object representing a date/time in São Paulo timezone
+ * verdao.net always uses São Paulo timezone (America/Sao_Paulo)
+ * 
+ * This function creates a date that represents the given time in São Paulo,
+ * regardless of the server's timezone.
+ */
+function createDateInSaoPaulo(year, month, day, hour, minute) {
+  // Create date string in ISO format (without timezone)
+  const monthStr = String(month).padStart(2, '0');
+  const dayStr = String(day).padStart(2, '0');
+  const hourStr = String(hour).padStart(2, '0');
+  const minuteStr = String(minute).padStart(2, '0');
+  
+  // Create a date representing this time in São Paulo timezone
+  // Strategy: Create date in UTC, then calculate São Paulo offset and adjust
+  // We'll create a test date to determine the offset for this specific date
+  
+  // Create a date in UTC representing the São Paulo time
+  const utcDate = new Date(Date.UTC(year, month - 1, day, hour, minute));
+  
+  // Get what this UTC time represents when displayed in São Paulo timezone
+  const saoPauloTimeStr = utcDate.toLocaleString('en-US', {
+    timeZone: 'America/Sao_Paulo',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false
+  });
+  
+  // Parse the São Paulo time string to get the actual São Paulo time
+  // Format: "MM/DD/YYYY, HH:MM"
+  const [datePart, timePart] = saoPauloTimeStr.split(', ');
+  const [saoPauloMonth, saoPauloDay, saoPauloYear] = datePart.split('/');
+  const [saoPauloHour, saoPauloMinute] = timePart.split(':');
+  
+  // Create a date representing what São Paulo time this UTC date shows
+  const saoPauloAsUTC = new Date(Date.UTC(
+    parseInt(saoPauloYear),
+    parseInt(saoPauloMonth) - 1,
+    parseInt(saoPauloDay),
+    parseInt(saoPauloHour),
+    parseInt(saoPauloMinute)
+  ));
+  
+  // Calculate offset: difference between UTC and what São Paulo shows
+  // If São Paulo is UTC-3, then UTC = SãoPaulo + 3 hours
+  // offsetMs represents how many ms to add to São Paulo time to get UTC
+  const offsetMs = utcDate.getTime() - saoPauloAsUTC.getTime();
+  
+  // Now create the date we want: São Paulo time converted to UTC
+  // We want the UTC time that, when displayed in São Paulo, shows our target time
+  // So: UTC = SãoPaulo + offset
+  const targetUTC = new Date(Date.UTC(year, month - 1, day, hour, minute));
+  return new Date(targetUTC.getTime() + offsetMs);
+}
+
 function parseDateTime(dateTimeStr, competition) {
   const match = dateTimeStr.match(/(\d{1,2})\/(\d{1,2})\s*[–-]\s*(\d{1,2})h(\d{2})/);
   if (!match) {
@@ -69,10 +128,12 @@ function parseDateTime(dateTimeStr, competition) {
     year = 2025;
   }
   
-  let date = new Date(year, parseInt(month) - 1, parseInt(day), parseInt(hour), parseInt(minute));
+  // Create date in São Paulo timezone (verdao.net always uses São Paulo time)
+  let date = createDateInSaoPaulo(year, parseInt(month), parseInt(day), parseInt(hour), parseInt(minute));
   
+  // Handle year rollover (if date is in the past and we're in December, it's probably next year)
   if (date < now && now.getMonth() >= 11) {
-    date = new Date(year + 1, parseInt(month) - 1, parseInt(day), parseInt(hour), parseInt(minute));
+    date = createDateInSaoPaulo(year + 1, parseInt(month), parseInt(day), parseInt(hour), parseInt(minute));
   }
   
   return date;
