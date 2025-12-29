@@ -36,9 +36,7 @@ export const logger = createLogger({
     } : undefined,
     skipInDevelopment: false, // Changed to false to test in any environment
 
-    channels: {
-      error: '#filipenevola-error'
-    },
+
   },
 });
 
