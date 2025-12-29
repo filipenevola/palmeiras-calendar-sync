@@ -207,11 +207,29 @@ async function fetchPalmeirasFixtures() {
     
     // Filter for future fixtures only - ignore status, just check date
     const now = new Date();
-    const futureFixtures = (data.matches || []).filter(match => {
-      // Check if match involves Palmeiras
-      const involvesPalmeiras = match.homeTeam.id === teamId || match.awayTeam.id === teamId;
-      if (!involvesPalmeiras) return false;
-      
+    logger.info(`[SYNC] Current date/time: ${now.toISOString()} (${now.getTime()})`);
+    
+    // First, get all Palmeiras matches for debugging
+    const palmeirasMatches = (data.matches || []).filter(match => 
+      match.homeTeam.id === teamId || match.awayTeam.id === teamId
+    );
+    logger.info(`[SYNC] Found ${palmeirasMatches.length} total Palmeiras matches`);
+    
+    // Debug: check first few match dates
+    palmeirasMatches.slice(0, 5).forEach((match, idx) => {
+      if (!match.utcDate) {
+        logger.warn(`[SYNC] Match ${idx + 1} has no utcDate`);
+        return;
+      }
+      const matchDate = new Date(match.utcDate);
+      const diff = matchDate.getTime() - now.getTime();
+      const diffDays = Math.floor(diff / (1000 * 60 * 60 * 24));
+      const isFuture = matchDate > now;
+      logger.info(`[SYNC] Match ${idx + 1}: ${match.utcDate} -> ${matchDate.toISOString()}, diff: ${diffDays} days, isFuture: ${isFuture}`);
+    });
+    
+    // Filter for future matches only
+    const futureFixtures = palmeirasMatches.filter(match => {
       // Only check if match date is in the future - ignore status completely
       if (!match.utcDate) return false;
       const matchDate = new Date(match.utcDate);
