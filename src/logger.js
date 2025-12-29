@@ -10,8 +10,9 @@ export const logger = createLogger({
   },
   slack: {
     enabled: !!process.env.SLACK_ERROR_WEBHOOK,
+    webhookUrl: process.env.SLACK_ERROR_WEBHOOK, // Required: default webhook URL
     webhookUrls: {
-      error: process.env.SLACK_ERROR_WEBHOOK,
+      error: process.env.SLACK_ERROR_WEBHOOK, // Override for errors specifically
     },
     skipInDevelopment: true,
   },
