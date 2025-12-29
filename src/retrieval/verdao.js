@@ -10,13 +10,21 @@ import { logger, ensureError } from '../logger.js';
 import * as cheerio from 'cheerio';
 
 const VERDAO_BASE_URL = 'https://ptd.verdao.net';
-const VERDAO_PAGES = [
-  { url: `${VERDAO_BASE_URL}/brasileirao-2026/`, competition: 'Brasileirão 2026' },
-  { url: `${VERDAO_BASE_URL}/paulista-2026/`, competition: 'Paulista 2026' },
-  { url: `${VERDAO_BASE_URL}/copa-do-brasil-2025/`, competition: 'Copa do Brasil 2025' },
-  { url: `${VERDAO_BASE_URL}/libertadores-2025/`, competition: 'Libertadores 2025' },
-  { url: `${VERDAO_BASE_URL}/`, competition: 'Próximos Jogos' }, // Home page
-];
+
+/**
+ * Generates the list of pages to scrape based on current year
+ * @returns {Array<{url: string, competition: string}>}
+ */
+function getVerdaoPages() {
+  const currentYear = new Date().getFullYear();
+  return [
+    { url: `${VERDAO_BASE_URL}/brasileirao-${currentYear}/`, competition: `Brasileirão ${currentYear}` },
+    { url: `${VERDAO_BASE_URL}/paulista-${currentYear}/`, competition: `Paulista ${currentYear}` },
+    { url: `${VERDAO_BASE_URL}/copa-do-brasil-${currentYear}/`, competition: `Copa do Brasil ${currentYear}` },
+    { url: `${VERDAO_BASE_URL}/libertadores-${currentYear}/`, competition: `Libertadores ${currentYear}` },
+    { url: `${VERDAO_BASE_URL}/`, competition: 'Próximos Jogos' }, // Home page
+  ];
+}
 
 const VERDAO_HEADERS = {
   'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
@@ -26,6 +34,40 @@ const VERDAO_HEADERS = {
   'Cache-Control': 'no-cache'
 };
 
+/**
+ * Checks if the response body indicates a 404 or page not found
+ * @param {string} html - The HTML content to check
+ * @returns {boolean} - True if this looks like a 404 page
+ */
+function isNotFoundPage(html) {
+  if (!html || html.length === 0) return true;
+  
+  const htmlLower = html.toLowerCase();
+  // Common 404 indicators
+  const notFoundIndicators = [
+    '404',
+    'not found',
+    'página não encontrada',
+    'página não existe',
+    'não encontrada',
+    'erro 404',
+    'page not found',
+    'nothing found',
+    'no posts found',
+    'nenhum resultado',
+    'sem resultados'
+  ];
+  
+  return notFoundIndicators.some(indicator => htmlLower.includes(indicator));
+}
+
+/**
+ * Fetches HTML from a URL with retry logic
+ * Returns null if the page is not found (404) or not published yet
+ * @param {string} url - URL to fetch
+ * @param {number} retries - Number of retry attempts
+ * @returns {Promise<string|null>} - HTML content or null if page not found
+ */
 async function fetchHTML(url, retries = 3) {
   for (let i = 0; i < retries; i++) {
     try {
@@ -35,7 +77,20 @@ async function fetchHTML(url, retries = 3) {
       if (response.ok) {
         const html = await response.text();
         logger.debug(`[RETRIEVAL] Success! Got ${html.length} bytes`);
+        
+        // Check if the response body indicates a 404 page
+        if (isNotFoundPage(html)) {
+          logger.info(`[RETRIEVAL] Page appears to be 404/not found: ${url}`);
+          return null;
+        }
+        
         return html;
+      }
+      
+      // Handle 404 and other client errors (page not published yet)
+      if (response.status === 404 || response.status === 410) {
+        logger.info(`[RETRIEVAL] Page not found (${response.status}): ${url} - likely not published yet`);
+        return null;
       }
       
       logger.warn(`[RETRIEVAL] HTTP ${response.status} - ${response.statusText}`);
@@ -49,6 +104,9 @@ async function fetchHTML(url, retries = 3) {
       await new Promise(r => setTimeout(r, delay));
     }
   }
+  
+  // If we exhausted retries, check if it's a network error vs 404
+  // For now, we'll throw an error for non-404 cases
   throw new Error(`Failed to fetch HTML after ${retries} attempts`);
 }
 
@@ -122,10 +180,10 @@ function parseDateTime(dateTimeStr, competition) {
   const now = new Date();
   let year = now.getFullYear();
   
-  if (competition.includes('2026')) {
-    year = 2026;
-  } else if (competition.includes('2025')) {
-    year = 2025;
+  // Extract year from competition name (e.g., "Brasileirão 2026" -> 2026)
+  const yearMatch = competition.match(/\b(20\d{2})\b/);
+  if (yearMatch) {
+    year = parseInt(yearMatch[1], 10);
   }
   
   // Create date in São Paulo timezone (verdao.net always uses São Paulo time)
@@ -289,11 +347,19 @@ export async function fetchPalmeirasFixtures() {
     logger.info(`[RETRIEVAL] Current date/time: ${now.toISOString()}`);
     
     const allMatches = [];
+    const pages = getVerdaoPages();
     
-    for (const page of VERDAO_PAGES) {
+    for (const page of pages) {
       try {
         logger.info(`[RETRIEVAL] Fetching ${page.competition} from ${page.url}...`);
         const html = await fetchHTML(page.url);
+        
+        // If HTML is null, the page doesn't exist yet (404 or not published)
+        if (html === null) {
+          logger.info(`[RETRIEVAL] Skipping ${page.competition} - page not available yet`);
+          continue;
+        }
+        
         const matches = parseMatchesFromHTML(html, page.competition, page.url);
         
         logger.info(`[RETRIEVAL] Found ${matches.length} matches from ${page.competition}`);
@@ -302,6 +368,7 @@ export async function fetchPalmeirasFixtures() {
         await new Promise(r => setTimeout(r, 500));
       } catch (err) {
         logger.warn(`[RETRIEVAL] Failed to fetch ${page.competition}:`, err.message);
+        // Continue with other pages even if one fails
       }
     }
     
