@@ -161,6 +161,29 @@ const HTML = `
       border-radius: 6px;
       border-left: 3px solid #0066cc;
     }
+    .test-error-btn {
+      position: fixed;
+      bottom: 20px;
+      right: 20px;
+      background: #dc3545;
+      color: white;
+      border: none;
+      padding: 8px 12px;
+      font-size: 0.75em;
+      border-radius: 6px;
+      cursor: pointer;
+      font-weight: 500;
+      transition: background 0.3s;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.2);
+      z-index: 1000;
+    }
+    .test-error-btn:hover:not(:disabled) {
+      background: #c82333;
+    }
+    .test-error-btn:disabled {
+      background: #6c757d;
+      cursor: not-allowed;
+    }
   </style>
 </head>
 <body>
@@ -183,6 +206,10 @@ const HTML = `
       <div id="message" style="display: none;" class="message"></div>
     </div>
   </div>
+  
+  <button class="test-error-btn" id="testErrorButton" onclick="triggerTestError()" title="Simular erro para testar integração Slack">
+    ⚠️ Test Error
+  </button>
 
   <script>
     let isSyncing = false;
@@ -339,6 +366,28 @@ const HTML = `
       }, 5000);
     }
 
+    async function triggerTestError() {
+      const testErrorButton = document.getElementById('testErrorButton');
+      testErrorButton.disabled = true;
+      testErrorButton.textContent = '⏳ Enviando...';
+      
+      try {
+        const response = await fetch('/api/test-error', { method: 'POST' });
+        const data = await response.json();
+        
+        if (response.ok) {
+          showMessage('✅ Erro de teste enviado para Slack!', 'success');
+        } else {
+          showMessage('❌ Erro: ' + (data.error || 'Falha ao enviar erro de teste'), 'error');
+        }
+      } catch (err) {
+        showMessage('❌ Erro ao enviar erro de teste: ' + err.message, 'error');
+      } finally {
+        testErrorButton.disabled = false;
+        testErrorButton.textContent = '⚠️ Test Error';
+      }
+    }
+
     // Load status on page load and refresh every 10 seconds
     loadStatus();
     setInterval(loadStatus, 10000);
@@ -391,6 +440,23 @@ export function createServer() {
           return Response.json({ 
             message: 'Sync started',
             status: 'running'
+          });
+        } catch (err) {
+          return Response.json({ error: err.message }, { status: 500 });
+        }
+      }
+      
+      // API: Test error (for Slack integration testing)
+      if (url.pathname === '/api/test-error' && req.method === 'POST') {
+        try {
+          const testError = new Error('Test error triggered from UI - Slack integration test');
+          testError.name = 'TestError';
+          testError.code = 'TEST_ERROR';
+          logger.error('[SERVER] Test error triggered from UI', testError);
+          
+          return Response.json({ 
+            message: 'Test error logged successfully',
+            status: 'ok'
           });
         } catch (err) {
           return Response.json({ error: err.message }, { status: 500 });

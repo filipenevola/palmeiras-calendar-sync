@@ -6,7 +6,7 @@ Automatically sync Palmeiras fixtures to your Google Calendar using Sofascore AP
 
 - 🌐 **Web Dashboard** - Simple UI to view sync status and trigger manual syncs
 - 📊 **Enhanced Logging** - Detailed logs stored in `/tmp` for debugging
-- 🔄 Daily automatic sync via GitHub Actions
+- 🔄 **Daily Automatic Sync** - Runs automatically every day using in-app cron scheduling
 - 📅 Creates/updates Google Calendar events
 - 🏠 Shows home (🏠) vs away (✈️) games
 - ⏰ 1-hour and 15-minute reminders
@@ -56,14 +56,16 @@ The app is configured to deploy automatically to Quave Cloud via GitHub Actions.
 | `GOOGLE_CREDENTIALS` | Base64 encoded service account JSON |
 | `GOOGLE_CALENDAR_ID` | Google Calendar ID (or `primary`) |
 | `SLACK_ERROR_WEBHOOK` | Slack webhook URL for error notifications (optional) |
+| `CRON_SCHEDULE` | Cron schedule for daily sync (default: `"0 2 * * *"` = 2 AM UTC daily) |
 | `ZCLOUD_USER_TOKEN` | Quave Cloud environment token (required for deployment) |
 
 ## How It Works
 
 1. The app runs on Quave Cloud and syncs Palmeiras fixtures to your Google Calendar
-2. Fetches upcoming Palmeiras fixtures from Sofascore API (no API key required!)
-3. Creates/updates events in your Google Calendar
-4. Each event includes:
+2. **Automatic Daily Sync**: Runs every day at 2 AM UTC (configurable via `CRON_SCHEDULE` env var)
+3. Fetches upcoming Palmeiras fixtures from Sofascore API (no API key required!)
+4. Creates/updates events in your Google Calendar
+5. Each event includes:
    - Match title with home/away indicator
    - Tournament/competition name
    - Venue information
@@ -92,6 +94,21 @@ Once deployed, the app includes a web dashboard accessible at your app's URL:
 
 The dashboard is available at the root URL of your deployed app (e.g., `https://your-app-url.zcloud.ws/`).
 
+## Sync Scheduling
+
+The app automatically syncs daily at **2 AM UTC** (configurable via `CRON_SCHEDULE` environment variable).
+
+### Customizing the Schedule
+
+You can customize when the sync runs by setting the `CRON_SCHEDULE` environment variable. Examples:
+
+- `"0 2 * * *"` - Daily at 2 AM UTC (default)
+- `"0 6 * * *"` - Daily at 6 AM UTC
+- `"0 */6 * * *"` - Every 6 hours
+- `"0 0 * * 0"` - Every Sunday at midnight UTC
+
+The cron format is: `minute hour day month day-of-week`
+
 ## Manual Sync
 
 You can trigger a manual sync in two ways:
@@ -117,6 +134,7 @@ bun install
 export GOOGLE_CREDENTIALS="base64-encoded-credentials"
 export GOOGLE_CALENDAR_ID="your-calendar-id"
 export SLACK_ERROR_WEBHOOK="https://hooks.slack.com/services/..."  # Optional: Slack webhook for error notifications
+export CRON_SCHEDULE="0 2 * * *"  # Optional: Custom cron schedule (default: 2 AM UTC daily)
 
 # Start the web server (includes dashboard)
 bun run start
