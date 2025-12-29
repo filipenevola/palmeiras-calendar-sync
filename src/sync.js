@@ -3,115 +3,51 @@ import { logger } from './logger.js';
 import { saveRunStatus } from './storage.js';
 
 // Configuration
-// Palmeiras team ID in Football-Data.org
-// To find your team ID: GET https://api.football-data.org/v4/teams?name=Palmeiras
-let PALMEIRAS_TEAM_ID_FOOTBALL_DATA = 1769; // Football-Data.org team ID for Palmeiras (SE Palmeiras)
-const FOOTBALL_DATA_API_KEY = process.env.FOOTBALL_DATA_API_KEY;
+// Palmeiras team ID in Sofascore API
+const PALMEIRAS_TEAM_ID_SOFASCORE = 1963; // Sofascore team ID for Palmeiras
+const SOFASCORE_BASE_URL = 'https://api.sofascore.com/api/v1';
 const GOOGLE_CREDENTIALS = process.env.GOOGLE_CREDENTIALS; // Base64 encoded service account JSON
 const GOOGLE_CALENDAR_ID = process.env.GOOGLE_CALENDAR_ID || 'primary';
 
-// Helper function to search for Palmeiras team ID across multiple competitions
-async function findPalmeirasTeamId() {
-  try {
-    logger.info('[SYNC] Searching for Palmeiras team ID across all competitions...');
-    
-    // Search in multiple competitions where Palmeiras plays:
-    // - Brazilian Serie A (2013)
-    // - Copa do Brasil (2014)
-    // - Copa Libertadores (2152)
-    // - Paulistão/São Paulo State Championship (check if available)
-    const competitions = [
-      { id: 2013, name: 'Brazilian Serie A' },
-      { id: 2014, name: 'Copa do Brasil' },
-      { id: 2152, name: 'Copa Libertadores' },
-    ];
-    
-    for (const comp of competitions) {
-      try {
-        const url = `https://api.football-data.org/v4/competitions/${comp.id}/teams`;
-        logger.info(`[SYNC] Searching in ${comp.name} (competition ${comp.id})...`);
-        
-        const response = await fetch(url, {
-          headers: {
-            'X-Auth-Token': FOOTBALL_DATA_API_KEY,
-            'Accept': 'application/json'
-          }
-        });
-        
-        if (response.ok) {
-          const data = await response.json();
-          if (data.teams && data.teams.length > 0) {
-            logger.info(`[SYNC] Found ${data.teams.length} teams in ${comp.name}`);
-            
-            // Look for Palmeiras
-            const palmeiras = data.teams.find(t => {
-              const name = (t.name || '').toLowerCase();
-              const shortName = (t.shortName || '').toLowerCase();
-              const tla = (t.tla || '').toLowerCase();
-              
-              return name.includes('palmeiras') || 
-                     shortName.includes('palmeiras') || 
-                     tla === 'pal' ||
-                     name.includes('sociedade esportiva palmeiras');
-            });
-            
-            if (palmeiras) {
-              logger.info(`[SYNC] Found Palmeiras team: ${palmeiras.name} (ID: ${palmeiras.id}, TLA: ${palmeiras.tla}) in ${comp.name}`);
-              return palmeiras.id;
-            }
-          }
-        } else {
-          logger.debug(`[SYNC] ${comp.name} not available (${response.status})`);
-        }
-      } catch (err) {
-        logger.debug(`[SYNC] Error searching ${comp.name}:`, err.message);
+// Sofascore API headers to mimic browser request
+const SOFASCORE_HEADERS = {
+  'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+  'Accept': 'application/json',
+  'Accept-Language': 'en-US,en;q=0.9,pt-BR;q=0.8,pt;q=0.7',
+  'Referer': 'https://www.sofascore.com/',
+  'Origin': 'https://www.sofascore.com',
+  'Cache-Control': 'no-cache'
+};
+
+// Helper function to fetch with retry logic for Sofascore API
+async function fetchWithRetry(url, retries = 3) {
+  for (let i = 0; i < retries; i++) {
+    try {
+      logger.debug(`[SYNC] Fetching: ${url} (attempt ${i + 1}/${retries})`);
+      const response = await fetch(url, { headers: SOFASCORE_HEADERS });
+      
+      if (response.ok) {
+        const data = await response.json();
+        return data;
       }
+      
+      logger.warn(`[SYNC] HTTP ${response.status} - ${response.statusText}`);
+    } catch (error) {
+      logger.warn(`[SYNC] Attempt ${i + 1} failed: ${error.message}`);
     }
     
-    // Fallback: Try direct team search with Brazilian filter
-    logger.info('[SYNC] Trying direct team search...');
-    const searchUrl = `https://api.football-data.org/v4/teams?name=${encodeURIComponent('Palmeiras')}`;
-    const searchResponse = await fetch(searchUrl, {
-      headers: {
-        'X-Auth-Token': FOOTBALL_DATA_API_KEY,
-        'Accept': 'application/json'
-      }
-    });
-    
-    if (searchResponse.ok) {
-      const searchData = await searchResponse.json();
-      if (searchData.teams && searchData.teams.length > 0) {
-        // Filter for Brazilian teams only
-        const brazilianTeams = searchData.teams.filter(t => 
-          (t.area?.name || '').toLowerCase() === 'brazil'
-        );
-        
-        if (brazilianTeams.length > 0) {
-          logger.info(`[SYNC] Found ${brazilianTeams.length} Brazilian teams matching "Palmeiras"`);
-          const palmeiras = brazilianTeams.find(t => {
-            const name = (t.name || '').toLowerCase();
-            return name.includes('palmeiras');
-          });
-          
-          if (palmeiras) {
-            logger.info(`[SYNC] Found Palmeiras team: ${palmeiras.name} (ID: ${palmeiras.id}, TLA: ${palmeiras.tla})`);
-            return palmeiras.id;
-          }
-        }
-      }
+    if (i < retries - 1) {
+      const delay = 2000 * (i + 1);
+      logger.debug(`[SYNC] Waiting ${delay}ms before retry...`);
+      await new Promise(r => setTimeout(r, delay));
     }
-    
-    logger.warn('[SYNC] Could not find Palmeiras team ID via search');
-  } catch (err) {
-    logger.warn('[SYNC] Failed to search for team ID', err);
   }
-  return null;
+  throw new Error(`Failed to fetch after ${retries} attempts`);
 }
 
 // Validate environment
 function validateEnv() {
   const missing = [];
-  if (!FOOTBALL_DATA_API_KEY) missing.push('FOOTBALL_DATA_API_KEY');
   if (!GOOGLE_CREDENTIALS) missing.push('GOOGLE_CREDENTIALS');
   
   if (missing.length > 0) {
@@ -121,226 +57,57 @@ function validateEnv() {
   }
 }
 
-// Fetch fixtures from Football-Data.org API
+// Fetch fixtures from Sofascore API
 async function fetchPalmeirasFixtures() {
-  logger.info('[SYNC] Fetching Palmeiras fixtures from Football-Data.org...');
-  
-  // Try to verify/find the correct team ID
-  let teamId = PALMEIRAS_TEAM_ID_FOOTBALL_DATA;
-  const foundTeamId = await findPalmeirasTeamId();
-  if (foundTeamId && foundTeamId !== teamId) {
-    logger.warn(`[SYNC] Found different team ID (${foundTeamId}) than configured (${teamId}), using found ID`);
-    teamId = foundTeamId;
-  }
-  
-  logger.info(`[SYNC] Using team ID: ${teamId}`);
+  logger.info('[SYNC] Fetching Palmeiras fixtures from Sofascore API...');
+  logger.info(`[SYNC] Using team ID: ${PALMEIRAS_TEAM_ID_SOFASCORE}`);
   
   try {
-    // Fetch matches from all competitions (the team endpoint returns matches from all competitions)
-    // Try to get future matches - use dateFrom and dateTo to get matches up to 1 year ahead
-    const today = new Date();
-    const todayStr = today.toISOString().split('T')[0]; // YYYY-MM-DD format
-    const oneYearLater = new Date(today);
-    oneYearLater.setFullYear(today.getFullYear() + 1);
-    const oneYearLaterStr = oneYearLater.toISOString().split('T')[0];
-    
-    // Try with dateFrom and dateTo to get future matches
-    let url = `https://api.football-data.org/v4/teams/${teamId}/matches?limit=200&dateFrom=${todayStr}&dateTo=${oneYearLaterStr}`;
-    
-    logger.info(`[SYNC] Fetching matches from all competitions for team ${teamId}...`);
-    logger.info(`[SYNC] Using dateFrom: ${todayStr}, dateTo: ${oneYearLaterStr} to get future matches`);
-    
-    let response = await fetch(url, {
-      headers: {
-        'X-Auth-Token': FOOTBALL_DATA_API_KEY,
-        'Accept': 'application/json'
-      }
-    });
-    
-    let data;
-    if (response.ok) {
-      data = await response.json();
-      logger.info(`[SYNC] API returned ${data.matches?.length || 0} matches with dateFrom=${todayStr}&dateTo=${oneYearLaterStr}`);
-    }
-    
-    // If no matches or very few, try without dateTo (just dateFrom)
-    if (!response.ok || !data || !data.matches || data.matches.length < 5) {
-      logger.info(`[SYNC] Trying with only dateFrom...`);
-      url = `https://api.football-data.org/v4/teams/${teamId}/matches?limit=200&dateFrom=${todayStr}`;
-      logger.debug('[SYNC] Fetching matches from', url);
-      
-      response = await fetch(url, {
-        headers: {
-          'X-Auth-Token': FOOTBALL_DATA_API_KEY,
-          'Accept': 'application/json'
-        }
-      });
-      
-      if (response.ok) {
-        data = await response.json();
-        logger.info(`[SYNC] API returned ${data.matches?.length || 0} matches with dateFrom=${todayStr}`);
-      }
-    }
-    
-    // If still no matches, try without any date filters to get all matches
-    if (!response.ok || !data || !data.matches || data.matches.length < 5) {
-      logger.info(`[SYNC] Trying without date filters to get all matches...`);
-      url = `https://api.football-data.org/v4/teams/${teamId}/matches?limit=200`;
-      logger.debug('[SYNC] Fetching matches from', url);
-      
-      response = await fetch(url, {
-        headers: {
-          'X-Auth-Token': FOOTBALL_DATA_API_KEY,
-          'Accept': 'application/json'
-        }
-      });
-      
-      if (response.ok) {
-        data = await response.json();
-        logger.info(`[SYNC] API returned ${data.matches?.length || 0} total matches without date filters`);
-      }
-    }
-    
-    // If still no future matches found, try fetching from competitions directly
-    // This might work better for future fixtures
-    if (!data || !data.matches || data.matches.length === 0 || 
-        !data.matches.some(m => {
-          if (!m.utcDate) return false;
-          const matchDate = new Date(m.utcDate);
-          return matchDate > today;
-        })) {
-      logger.info(`[SYNC] No future matches found via team endpoint, trying competitions directly...`);
-      
-      // Try fetching from competitions where Palmeiras plays
-      const competitions = [
-        { id: 2013, name: 'Brazilian Serie A' },
-        { id: 2014, name: 'Copa do Brasil' },
-        { id: 2152, name: 'Copa Libertadores' },
-        // Note: Paulistão might not be available in free tier
-      ];
-      
-      const allMatches = [];
-      for (const comp of competitions) {
-        try {
-          const compUrl = `https://api.football-data.org/v4/competitions/${comp.id}/matches?limit=200&dateFrom=${todayStr}&dateTo=${oneYearLaterStr}`;
-          logger.info(`[SYNC] Fetching matches from ${comp.name}...`);
-          
-          const compResponse = await fetch(compUrl, {
-            headers: {
-              'X-Auth-Token': FOOTBALL_DATA_API_KEY,
-              'Accept': 'application/json'
-            }
-          });
-          
-          if (compResponse.ok) {
-            const compData = await compResponse.json();
-            if (compData.matches && compData.matches.length > 0) {
-              // Filter for Palmeiras matches
-              const palmeirasMatches = compData.matches.filter(m => 
-                m.homeTeam.id === teamId || m.awayTeam.id === teamId
-              );
-              if (palmeirasMatches.length > 0) {
-                logger.info(`[SYNC] Found ${palmeirasMatches.length} Palmeiras matches in ${comp.name}`);
-                allMatches.push(...palmeirasMatches);
-              }
-            }
-          }
-        } catch (err) {
-          logger.debug(`[SYNC] Error fetching from ${comp.name}:`, err.message);
-        }
-      }
-      
-      if (allMatches.length > 0) {
-        logger.info(`[SYNC] Found ${allMatches.length} total matches from competitions`);
-        data = { matches: allMatches };
-      }
-    }
-    
-    if (!response.ok) {
-      const errorText = await response.text();
-      const error = new Error(`Football-Data.org HTTP error: ${response.status} ${response.statusText}. ${errorText}`);
-      error.status = response.status;
-      error.statusText = response.statusText;
-      error.errorText = errorText;
-      logger.error('[SYNC] Football-Data.org HTTP error', error);
-      
-      // If 401, provide helpful error message
-      if (response.status === 401) {
-        const authError = new Error('Football-Data.org authentication failed. Please check your API key. Get a free key at https://www.football-data.org/');
-        logger.error('[SYNC] Authentication failed', authError);
-        throw authError;
-      }
-      
-      throw error;
-    }
-    
-    if (!data) {
-      data = await response.json();
-    }
-    
-    // Debug: log what we received
-    logger.info(`[SYNC] API returned ${data.matches?.length || 0} total matches`);
-    if (data.matches && data.matches.length > 0) {
-      const statuses = {};
-      const competitions = new Set();
-      const teamsInMatches = new Set();
-      
-      data.matches.forEach(match => {
-        statuses[match.status] = (statuses[match.status] || 0) + 1;
-        if (match.competition) {
-          competitions.add(`${match.competition.name} (${match.competition.code || 'N/A'})`);
-        }
-        teamsInMatches.add(`${match.homeTeam.name} (ID: ${match.homeTeam.id})`);
-        teamsInMatches.add(`${match.awayTeam.name} (ID: ${match.awayTeam.id})`);
-      });
-      
-      logger.info(`[SYNC] Match statuses: ${JSON.stringify(statuses)}`);
-      logger.info(`[SYNC] Competitions found: ${Array.from(competitions).join(', ')}`);
-      logger.info(`[SYNC] Teams in matches: ${Array.from(teamsInMatches).slice(0, 5).join(', ')}`);
-      logger.info(`[SYNC] Looking for team ID: ${teamId}`);
-      
-      // Check if any matches involve our team
-      const matchesWithOurTeam = data.matches.filter(m => 
-        m.homeTeam.id === teamId || m.awayTeam.id === teamId
-      );
-      logger.info(`[SYNC] Matches involving team ID ${teamId}: ${matchesWithOurTeam.length}`);
-      
-      // Log first few matches with competition info for debugging
-      data.matches.slice(0, 5).forEach(match => {
-        const involvesOurTeam = match.homeTeam.id === teamId || match.awayTeam.id === teamId;
-        const compName = match.competition?.name || 'Unknown';
-        logger.info(`[SYNC] Sample match: ${match.homeTeam.name} (${match.homeTeam.id}) vs ${match.awayTeam.name} (${match.awayTeam.id}) - Competition: ${compName} - Status: ${match.status} - Date: ${match.utcDate} - Our team: ${involvesOurTeam ? 'YES' : 'NO'}`);
-      });
-    }
-    
-    // Filter for future fixtures only - ignore status, just check date
     const now = new Date();
     logger.info(`[SYNC] Current date/time: ${now.toISOString()} (${now.getTime()})`);
     
-    // First, get all Palmeiras matches for debugging
-    const palmeirasMatches = (data.matches || []).filter(match => 
-      match.homeTeam.id === teamId || match.awayTeam.id === teamId
-    );
-    logger.info(`[SYNC] Found ${palmeirasMatches.length} total Palmeiras matches`);
+    // Fetch upcoming fixtures (next events)
+    logger.info('[SYNC] Fetching upcoming fixtures...');
+    const nextEventsUrl = `${SOFASCORE_BASE_URL}/team/${PALMEIRAS_TEAM_ID_SOFASCORE}/events/next/0`;
+    const nextEventsData = await fetchWithRetry(nextEventsUrl);
+    const nextEvents = nextEventsData.events || [];
     
-    // Debug: check first few match dates
-    palmeirasMatches.slice(0, 5).forEach((match, idx) => {
-      if (!match.utcDate) {
-        logger.warn(`[SYNC] Match ${idx + 1} has no utcDate`);
-        return;
-      }
-      const matchDate = new Date(match.utcDate);
-      const diff = matchDate.getTime() - now.getTime();
-      const diffDays = Math.floor(diff / (1000 * 60 * 60 * 24));
-      const isFuture = matchDate > now;
-      logger.info(`[SYNC] Match ${idx + 1}: ${match.utcDate} -> ${matchDate.toISOString()}, diff: ${diffDays} days, isFuture: ${isFuture}`);
-    });
+    logger.info(`[SYNC] Sofascore API returned ${nextEvents.length} upcoming events`);
     
-    // Filter for future matches only
-    const futureFixtures = palmeirasMatches.filter(match => {
-      // Only check if match date is in the future - ignore status completely
-      if (!match.utcDate) return false;
-      const matchDate = new Date(match.utcDate);
+    // Debug: log what we received
+    if (nextEvents.length > 0) {
+      const tournaments = new Set();
+      const statuses = new Set();
+      
+      nextEvents.forEach(event => {
+        const tournamentName = event.tournament?.name || event.tournament?.uniqueTournament?.name || 'Unknown';
+        tournaments.add(tournamentName);
+        if (event.status?.description) {
+          statuses.add(event.status.description);
+        }
+      });
+      
+      logger.info(`[SYNC] Tournaments found: ${Array.from(tournaments).join(', ')}`);
+      logger.info(`[SYNC] Statuses found: ${Array.from(statuses).join(', ')}`);
+      
+      // Log first few events for debugging
+      nextEvents.slice(0, 5).forEach((event, idx) => {
+        const startTime = new Date(event.startTimestamp * 1000);
+        const homeTeam = event.homeTeam?.name || 'TBD';
+        const awayTeam = event.awayTeam?.name || 'TBD';
+        const tournament = event.tournament?.name || event.tournament?.uniqueTournament?.name || 'Unknown';
+        const diff = startTime.getTime() - now.getTime();
+        const diffDays = Math.floor(diff / (1000 * 60 * 60 * 24));
+        const isFuture = startTime > now;
+        
+        logger.info(`[SYNC] Event ${idx + 1}: ${homeTeam} vs ${awayTeam} - Tournament: ${tournament} - Date: ${startTime.toISOString()}, diff: ${diffDays} days, isFuture: ${isFuture}`);
+      });
+    }
+    
+    // Filter for future fixtures only - check date
+    const futureFixtures = nextEvents.filter(event => {
+      if (!event.startTimestamp) return false;
+      const matchDate = new Date(event.startTimestamp * 1000); // Convert Unix timestamp (seconds) to milliseconds
       return matchDate > now;
     });
     
@@ -348,7 +115,7 @@ async function fetchPalmeirasFixtures() {
     
     // Store teamId in fixtures for later use
     futureFixtures.forEach(fixture => {
-      fixture._teamId = teamId;
+      fixture._teamId = PALMEIRAS_TEAM_ID_SOFASCORE;
     });
     
     return futureFixtures;
@@ -358,26 +125,33 @@ async function fetchPalmeirasFixtures() {
   }
 }
 
-// Convert Football-Data.org match to Google Calendar event
-function fixtureToCalendarEvent(match, teamId = PALMEIRAS_TEAM_ID_FOOTBALL_DATA) {
-  // Football-Data.org structure: match.homeTeam, match.awayTeam
-  const isHome = match.homeTeam.id === teamId;
-  const opponent = isHome ? match.awayTeam.name : match.homeTeam.name;
+// Convert Sofascore event to Google Calendar event
+function fixtureToCalendarEvent(event, teamId = PALMEIRAS_TEAM_ID_SOFASCORE) {
+  // Sofascore structure: event.homeTeam, event.awayTeam, event.startTimestamp (Unix timestamp in seconds)
+  const isHome = event.homeTeam?.id === teamId;
+  const homeTeam = event.homeTeam?.name || 'TBD';
+  const awayTeam = event.awayTeam?.name || 'TBD';
+  const opponent = isHome ? awayTeam : homeTeam;
   const venue = isHome ? '🏠' : '✈️';
   
-  const startDateTime = new Date(match.utcDate);
+  // Convert Unix timestamp (seconds) to Date
+  const startDateTime = new Date(event.startTimestamp * 1000);
   const endDateTime = new Date(startDateTime.getTime() + 2 * 60 * 60 * 1000); // 2 hours
+  
+  const tournament = event.tournament?.name || event.tournament?.uniqueTournament?.name || 'Unknown';
+  const round = event.roundInfo?.round ? `Round ${event.roundInfo.round}` : '';
+  const venueName = event.venue?.stadium?.name || event.homeTeam?.venue?.stadium?.name || '';
   
   return {
     summary: `${venue} Palmeiras vs ${opponent}`,
     description: [
-      `⚽ ${match.competition.name}${match.matchday ? ` - Matchday ${match.matchday}` : ''}`,
-      `📍 ${match.venue || 'TBD'}`,
+      `⚽ ${tournament}${round ? ` - ${round}` : ''}`,
+      `📍 ${venueName || 'TBD'}`,
       ``,
-      `Source: Football-Data.org`,
-      `Match ID: ${match.id}`
+      `Source: Sofascore`,
+      `Event ID: ${event.id}`
     ].join('\n'),
-    location: match.venue || '',
+    location: venueName || '',
     start: {
       dateTime: startDateTime.toISOString(),
       timeZone: 'America/Sao_Paulo',
@@ -396,7 +170,7 @@ function fixtureToCalendarEvent(match, teamId = PALMEIRAS_TEAM_ID_FOOTBALL_DATA)
     extendedProperties: {
       private: {
         palmeirasSync: 'true',
-        fixtureId: String(match.id),
+        fixtureId: String(event.id),
       }
     }
   };
@@ -472,7 +246,7 @@ async function syncToCalendar(fixtures) {
   const errors = [];
   
   for (const fixture of fixtures) {
-    const teamId = fixture._teamId || PALMEIRAS_TEAM_ID_FOOTBALL_DATA;
+    const teamId = fixture._teamId || PALMEIRAS_TEAM_ID_SOFASCORE;
     const event = fixtureToCalendarEvent(fixture, teamId);
     const fixtureId = String(fixture.id);
     const existingEventId = existingEvents.get(fixtureId);
@@ -549,15 +323,16 @@ export async function runSync() {
     // Log fixtures summary
     logger.info(`[SYNC] Fixtures to sync: ${fixtures.length}`);
     fixtures.slice(0, 5).forEach(f => {
-      const teamId = f._teamId || PALMEIRAS_TEAM_ID_FOOTBALL_DATA;
-      const isHome = f.homeTeam.id === teamId;
-      const opponent = isHome ? f.awayTeam.name : f.homeTeam.name;
-      const date = new Date(f.utcDate).toLocaleString('pt-BR', { 
+      const teamId = f._teamId || PALMEIRAS_TEAM_ID_SOFASCORE;
+      const isHome = f.homeTeam?.id === teamId;
+      const opponent = isHome ? (f.awayTeam?.name || 'TBD') : (f.homeTeam?.name || 'TBD');
+      const date = new Date(f.startTimestamp * 1000).toLocaleString('pt-BR', { 
         timeZone: 'America/Sao_Paulo',
         dateStyle: 'short',
         timeStyle: 'short'
       });
-      logger.info(`  ${date} - ${isHome ? '🏠' : '✈️'} vs ${opponent} [${f.competition.name}]`);
+      const tournament = f.tournament?.name || f.tournament?.uniqueTournament?.name || 'Unknown';
+      logger.info(`  ${date} - ${isHome ? '🏠' : '✈️'} vs ${opponent} [${tournament}]`);
     });
     if (fixtures.length > 5) {
       logger.info(`  ... and ${fixtures.length - 5} more`);
