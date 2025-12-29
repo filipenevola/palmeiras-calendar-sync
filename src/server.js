@@ -1,5 +1,5 @@
 import { logger } from './logger.js';
-import { runSync } from './sync.js';
+import { sync } from './sync.js';
 import { getLatestRunStatus } from './storage.js';
 
 const PORT = process.env.PORT || 3000;
@@ -383,7 +383,7 @@ export function createServer() {
           });
           
           // Run sync in background
-          runSync().catch(err => {
+          sync().catch(err => {
             logger.error('[SERVER] Background sync failed', err);
           });
           
