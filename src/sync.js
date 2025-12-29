@@ -137,13 +137,18 @@ async function fetchPalmeirasFixtures() {
   
   try {
     // Fetch matches from all competitions (the team endpoint returns matches from all competitions)
-    // Try without dateFrom first to get all matches, then filter client-side
-    // Also try with status=SCHEDULED to get upcoming matches
-    const today = new Date().toISOString().split('T')[0]; // YYYY-MM-DD format
-    let url = `https://api.football-data.org/v4/teams/${teamId}/matches?limit=100&dateFrom=${today}`;
+    // Try to get future matches - use dateFrom and dateTo to get matches up to 1 year ahead
+    const today = new Date();
+    const todayStr = today.toISOString().split('T')[0]; // YYYY-MM-DD format
+    const oneYearLater = new Date(today);
+    oneYearLater.setFullYear(today.getFullYear() + 1);
+    const oneYearLaterStr = oneYearLater.toISOString().split('T')[0];
+    
+    // Try with dateFrom and dateTo to get future matches
+    let url = `https://api.football-data.org/v4/teams/${teamId}/matches?limit=200&dateFrom=${todayStr}&dateTo=${oneYearLaterStr}`;
     
     logger.info(`[SYNC] Fetching matches from all competitions for team ${teamId}...`);
-    logger.info(`[SYNC] Using dateFrom: ${today} to get future matches`);
+    logger.info(`[SYNC] Using dateFrom: ${todayStr}, dateTo: ${oneYearLaterStr} to get future matches`);
     
     let response = await fetch(url, {
       headers: {
@@ -152,16 +157,34 @@ async function fetchPalmeirasFixtures() {
       }
     });
     
-    // If dateFrom doesn't return results, try without it to get all matches
     let data;
     if (response.ok) {
       data = await response.json();
-      logger.info(`[SYNC] API returned ${data.matches?.length || 0} matches with dateFrom=${today}`);
+      logger.info(`[SYNC] API returned ${data.matches?.length || 0} matches with dateFrom=${todayStr}&dateTo=${oneYearLaterStr}`);
     }
     
-    // If no matches or very few, try without dateFrom to get all matches
-    if (!response.ok || !data || !data.matches || data.matches.length < 10) {
-      logger.info(`[SYNC] Trying without dateFrom to get all matches...`);
+    // If no matches or very few, try without dateTo (just dateFrom)
+    if (!response.ok || !data || !data.matches || data.matches.length < 5) {
+      logger.info(`[SYNC] Trying with only dateFrom...`);
+      url = `https://api.football-data.org/v4/teams/${teamId}/matches?limit=200&dateFrom=${todayStr}`;
+      logger.debug('[SYNC] Fetching matches from', url);
+      
+      response = await fetch(url, {
+        headers: {
+          'X-Auth-Token': FOOTBALL_DATA_API_KEY,
+          'Accept': 'application/json'
+        }
+      });
+      
+      if (response.ok) {
+        data = await response.json();
+        logger.info(`[SYNC] API returned ${data.matches?.length || 0} matches with dateFrom=${todayStr}`);
+      }
+    }
+    
+    // If still no matches, try without any date filters to get all matches
+    if (!response.ok || !data || !data.matches || data.matches.length < 5) {
+      logger.info(`[SYNC] Trying without date filters to get all matches...`);
       url = `https://api.football-data.org/v4/teams/${teamId}/matches?limit=200`;
       logger.debug('[SYNC] Fetching matches from', url);
       
@@ -174,7 +197,62 @@ async function fetchPalmeirasFixtures() {
       
       if (response.ok) {
         data = await response.json();
-        logger.info(`[SYNC] API returned ${data.matches?.length || 0} total matches without dateFrom`);
+        logger.info(`[SYNC] API returned ${data.matches?.length || 0} total matches without date filters`);
+      }
+    }
+    
+    // If still no future matches found, try fetching from competitions directly
+    // This might work better for future fixtures
+    if (!data || !data.matches || data.matches.length === 0 || 
+        !data.matches.some(m => {
+          if (!m.utcDate) return false;
+          const matchDate = new Date(m.utcDate);
+          return matchDate > today;
+        })) {
+      logger.info(`[SYNC] No future matches found via team endpoint, trying competitions directly...`);
+      
+      // Try fetching from competitions where Palmeiras plays
+      const competitions = [
+        { id: 2013, name: 'Brazilian Serie A' },
+        { id: 2014, name: 'Copa do Brasil' },
+        { id: 2152, name: 'Copa Libertadores' },
+        // Note: Paulistão might not be available in free tier
+      ];
+      
+      const allMatches = [];
+      for (const comp of competitions) {
+        try {
+          const compUrl = `https://api.football-data.org/v4/competitions/${comp.id}/matches?limit=200&dateFrom=${todayStr}&dateTo=${oneYearLaterStr}`;
+          logger.info(`[SYNC] Fetching matches from ${comp.name}...`);
+          
+          const compResponse = await fetch(compUrl, {
+            headers: {
+              'X-Auth-Token': FOOTBALL_DATA_API_KEY,
+              'Accept': 'application/json'
+            }
+          });
+          
+          if (compResponse.ok) {
+            const compData = await compResponse.json();
+            if (compData.matches && compData.matches.length > 0) {
+              // Filter for Palmeiras matches
+              const palmeirasMatches = compData.matches.filter(m => 
+                m.homeTeam.id === teamId || m.awayTeam.id === teamId
+              );
+              if (palmeirasMatches.length > 0) {
+                logger.info(`[SYNC] Found ${palmeirasMatches.length} Palmeiras matches in ${comp.name}`);
+                allMatches.push(...palmeirasMatches);
+              }
+            }
+          }
+        } catch (err) {
+          logger.debug(`[SYNC] Error fetching from ${comp.name}:`, err.message);
+        }
+      }
+      
+      if (allMatches.length > 0) {
+        logger.info(`[SYNC] Found ${allMatches.length} total matches from competitions`);
+        data = { matches: allMatches };
       }
     }
     
