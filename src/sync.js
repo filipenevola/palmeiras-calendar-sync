@@ -205,29 +205,17 @@ async function fetchPalmeirasFixtures() {
       });
     }
     
-    // Filter for future fixtures only
+    // Filter for future fixtures only - ignore status, just check date
     const now = new Date();
-    // Accept matches that are in the future, regardless of status
-    // (Football-Data.org free tier sometimes marks future matches as FINISHED)
     const futureFixtures = (data.matches || []).filter(match => {
       // Check if match involves Palmeiras
       const involvesPalmeiras = match.homeTeam.id === teamId || match.awayTeam.id === teamId;
       if (!involvesPalmeiras) return false;
       
-      // Check if match is in the future (primary check)
+      // Only check if match date is in the future - ignore status completely
       if (!match.utcDate) return false;
       const matchDate = new Date(match.utcDate);
-      const isFuture = matchDate > now;
-      
-      // Accept if:
-      // 1. Match is in the future (regardless of status - free tier sometimes marks future as FINISHED)
-      // 2. OR match has SCHEDULED/TIMED status (standard upcoming match statuses)
-      if (isFuture) {
-        return true; // Accept future matches even if status is FINISHED
-      }
-      
-      // Also accept SCHEDULED or TIMED status matches
-      return match.status === 'SCHEDULED' || match.status === 'TIMED';
+      return matchDate > now;
     });
     
     logger.info(`[SYNC] Found ${futureFixtures.length} upcoming fixtures for Palmeiras`);
