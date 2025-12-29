@@ -314,8 +314,7 @@ function parseMatchesFromHTML(html, competition, pageUrl) {
             
             const locationLower = location.toLowerCase();
             const isHome = locationLower.includes('barueri') || 
-                           locationLower.includes('allianz') ||
-                           (!locationLower.includes('canindé') && !locationLower.includes('novo horizonte') && !locationLower.includes('itaquera'));
+                           locationLower.includes('allianz');
             
             matches.push({
               date: matchDate,
