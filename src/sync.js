@@ -88,6 +88,20 @@ async function fetchPalmeirasFixtures() {
     const now = new Date();
     logger.info(`[SYNC] Current date/time: ${now.toISOString()} (${now.getTime()})`);
     
+    // Try fetching team info first (like in the snippet) - this might help establish a session
+    try {
+      logger.info('[SYNC] Fetching team info first...');
+      const teamInfoUrl = `${SOFASCORE_BASE_URL}/team/${PALMEIRAS_TEAM_ID_SOFASCORE}`;
+      const teamInfo = await fetchWithRetry(teamInfoUrl);
+      if (teamInfo.team) {
+        logger.info(`[SYNC] Team info: ${teamInfo.team.name} (${teamInfo.team.country?.name || 'N/A'})`);
+      }
+      // Add delay between requests to avoid rate limiting
+      await new Promise(r => setTimeout(r, 1000));
+    } catch (err) {
+      logger.warn('[SYNC] Failed to fetch team info, continuing anyway:', err.message);
+    }
+    
     // Fetch upcoming fixtures (next events)
     logger.info('[SYNC] Fetching upcoming fixtures...');
     const nextEventsUrl = `${SOFASCORE_BASE_URL}/team/${PALMEIRAS_TEAM_ID_SOFASCORE}/events/next/0`;
