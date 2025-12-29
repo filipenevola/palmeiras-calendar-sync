@@ -16,7 +16,12 @@ const SOFASCORE_HEADERS = {
   'Accept-Language': 'en-US,en;q=0.9,pt-BR;q=0.8,pt;q=0.7',
   'Referer': 'https://www.sofascore.com/',
   'Origin': 'https://www.sofascore.com',
-  'Cache-Control': 'no-cache'
+  'Cache-Control': 'no-cache',
+  'Accept-Encoding': 'gzip, deflate, br',
+  'Connection': 'keep-alive',
+  'Sec-Fetch-Dest': 'empty',
+  'Sec-Fetch-Mode': 'cors',
+  'Sec-Fetch-Site': 'same-site'
 };
 
 // Helper function to fetch with retry logic for Sofascore API
@@ -28,10 +33,27 @@ async function fetchWithRetry(url, retries = 3) {
       
       if (response.ok) {
         const data = await response.json();
+        logger.debug(`[SYNC] Success!`);
         return data;
       }
       
-      logger.warn(`[SYNC] HTTP ${response.status} - ${response.statusText}`);
+      // Try to get error details from response body
+      let errorText = '';
+      try {
+        errorText = await response.text();
+      } catch (e) {
+        // Ignore if we can't read the body
+      }
+      
+      logger.warn(`[SYNC] HTTP ${response.status} - ${response.statusText}${errorText ? `: ${errorText.substring(0, 200)}` : ''}`);
+      
+      // If 403, Sofascore might be blocking - log more details
+      if (response.status === 403) {
+        logger.warn(`[SYNC] Sofascore API returned 403 Forbidden. This might indicate:`);
+        logger.warn(`[SYNC] - IP-based blocking (server IP might be blocked)`);
+        logger.warn(`[SYNC] - Missing required headers`);
+        logger.warn(`[SYNC] - Rate limiting`);
+      }
     } catch (error) {
       logger.warn(`[SYNC] Attempt ${i + 1} failed: ${error.message}`);
     }
