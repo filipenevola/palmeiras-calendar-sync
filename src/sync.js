@@ -137,10 +137,12 @@ async function fetchPalmeirasFixtures() {
   
   try {
     // Fetch matches from all competitions (the team endpoint returns matches from all competitions)
-    // Increase limit to get more matches and include future dates
-    const url = `https://api.football-data.org/v4/teams/${teamId}/matches?limit=100`;
+    // Use dateFrom parameter to get future matches (today onwards)
+    const today = new Date().toISOString().split('T')[0]; // YYYY-MM-DD format
+    const url = `https://api.football-data.org/v4/teams/${teamId}/matches?limit=100&dateFrom=${today}`;
     
     logger.info(`[SYNC] Fetching matches from all competitions for team ${teamId}...`);
+    logger.info(`[SYNC] Using dateFrom: ${today} to get future matches`);
     logger.debug('[SYNC] Fetching matches from', url);
     
     const response = await fetch(url, {
