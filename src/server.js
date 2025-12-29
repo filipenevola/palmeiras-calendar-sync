@@ -1,4 +1,4 @@
-import { logger } from './logger.js';
+import { logger, ensureError } from './logger.js';
 import { sync } from './sync.js';
 import { getLatestRunStatus } from './storage.js';
 
@@ -384,7 +384,8 @@ export function createServer() {
           
           // Run sync in background
           sync().catch(err => {
-            logger.error('[SERVER] Background sync failed', err);
+            const error = ensureError(err);
+            logger.error('[SERVER] Background sync failed', error);
           });
           
           return Response.json({ 

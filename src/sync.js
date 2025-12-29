@@ -7,7 +7,7 @@
  * 3. Sync matches to Google Calendar
  */
 
-import { logger } from './logger.js';
+import { logger, ensureError } from './logger.js';
 import { saveRunStatus } from './storage.js';
 import { GOOGLE_CREDENTIALS } from './config.js';
 import { fetchPalmeirasFixtures } from './retrieval/verdao.js';
@@ -104,7 +104,8 @@ export async function sync() {
       error: err.message,
     };
     
-    logger.error('❌ Sync failed', err);
+    const error = ensureError(err);
+    logger.error('❌ Sync failed', error);
     await saveRunStatus(result);
     throw err;
   }

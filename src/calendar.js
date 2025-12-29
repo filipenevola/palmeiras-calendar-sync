@@ -6,8 +6,9 @@
  */
 
 import { google } from 'googleapis';
-import { logger } from './logger.js';
+import { logger, ensureError } from './logger.js';
 import { GOOGLE_CREDENTIALS, GOOGLE_CALENDAR_ID } from './config.js';
+import { getMatchUniqueKey } from './processing.js';
 
 /**
  * Converts a Match to a Google Calendar event
@@ -24,6 +25,9 @@ export function matchToCalendarEvent(match) {
     summary += ` 📺 ${match.broadcast}`;
   }
   
+  // Generate unique key based on teams and competition (not date/time)
+  const uniqueKey = getMatchUniqueKey(match);
+  
   return {
     summary: summary,
     description: [
@@ -32,7 +36,9 @@ export function matchToCalendarEvent(match) {
       match.broadcast ? `📺 ${match.broadcast}` : '',
       ``,
       `Source: ${match.source}`,
-      `Match Date: ${startDateTime.toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo' })}`
+      `Match Date: ${startDateTime.toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo' })}`,
+      ``,
+      `Match ID: ${uniqueKey}`
     ].filter(Boolean).join('\n'),
     location: match.location || '',
     start: {
@@ -53,27 +59,90 @@ export function matchToCalendarEvent(match) {
     extendedProperties: {
       private: {
         palmeirasSync: 'true',
-        fixtureId: `${match.date.toISOString()}_${match.opponent}_${match.competition}`,
+        fixtureId: uniqueKey,
       }
     }
   };
 }
 
+function parseCredentials(credentialsString) {
+  if (!credentialsString) {
+    throw new Error('GOOGLE_CREDENTIALS environment variable is not set');
+  }
+
+  let credentials;
+  
+  // Try to parse as base64 first, then as plain JSON
+  try {
+    const decoded = Buffer.from(credentialsString, 'base64').toString('utf-8');
+    credentials = JSON.parse(decoded);
+  } catch (base64Error) {
+    // If base64 decoding fails, try parsing as plain JSON
+    try {
+      credentials = JSON.parse(credentialsString);
+    } catch (jsonError) {
+      throw new Error(
+        `Failed to parse GOOGLE_CREDENTIALS: ${base64Error.message}. ` +
+        `Also tried as plain JSON: ${jsonError.message}`
+      );
+    }
+  }
+
+  // Validate required fields
+  if (!credentials.private_key) {
+    throw new Error('GOOGLE_CREDENTIALS missing required field: private_key');
+  }
+  if (!credentials.client_email) {
+    throw new Error('GOOGLE_CREDENTIALS missing required field: client_email');
+  }
+
+  // Fix private key formatting - ensure newlines are preserved
+  // The private key might have literal \n characters that need to be converted to actual newlines
+  if (typeof credentials.private_key === 'string') {
+    credentials.private_key = credentials.private_key.replace(/\\n/g, '\n');
+    
+    // Ensure the key starts and ends with proper markers
+    if (!credentials.private_key.includes('BEGIN PRIVATE KEY')) {
+      // If the key doesn't have proper formatting, it might be corrupted
+      logger.info('[CALENDAR] Warning: Private key may be missing proper PEM formatting');
+    }
+  }
+
+  return credentials;
+}
+
 export async function getCalendarClient() {
   try {
-    const credentials = JSON.parse(
-      Buffer.from(GOOGLE_CREDENTIALS, 'base64').toString('utf-8')
-    );
+    const credentials = parseCredentials(GOOGLE_CREDENTIALS);
     
     const auth = new google.auth.GoogleAuth({
       credentials,
       scopes: ['https://www.googleapis.com/auth/calendar'],
     });
     
-    logger.info('[CALENDAR] Google Calendar client initialized successfully');
+    // Test the auth by getting the client email
+    const client = await auth.getClient();
+    const projectId = await auth.getProjectId().catch(() => null);
+    
+    logger.info('[CALENDAR] Google Calendar client initialized successfully', {
+      clientEmail: credentials.client_email,
+      projectId: projectId || 'unknown'
+    });
+    
     return google.calendar({ version: 'v3', auth });
   } catch (err) {
-    logger.error('[CALENDAR] Failed to initialize Google Calendar client', err);
+    // Ensure error is an Error object for proper Slack formatting
+    const error = ensureError(err);
+    if (err.code) {
+      error.code = err.code;
+    }
+    if (err.code === 'ERR_OSSL_CRT_VALUES_INCORRECT') {
+      error.hint = 'The private key in GOOGLE_CREDENTIALS appears to be corrupted. Please verify the credentials are correctly base64-encoded.';
+    } else {
+      error.hint = 'Please check that GOOGLE_CREDENTIALS is properly formatted and contains valid service account credentials.';
+    }
+    
+    logger.error('[CALENDAR] Failed to initialize Google Calendar client', error);
     throw err;
   }
 }
@@ -104,7 +173,8 @@ export async function getExistingEvents(calendar) {
     logger.info(`[CALENDAR] Found ${fixtureMap.size} existing Palmeiras events in calendar`);
     return fixtureMap;
   } catch (err) {
-    logger.error('[CALENDAR] Failed to fetch existing events', err);
+    const error = ensureError(err);
+    logger.error('[CALENDAR] Failed to fetch existing events', error);
     throw err;
   }
 }
@@ -148,11 +218,12 @@ export async function syncMatchesToCalendar(matches) {
         created++;
       }
     } catch (err) {
-      const errorMsg = `${event.summary} - ${err.message}`;
-      err.fixture = event.summary;
-      err.fixtureId = fixtureId;
-      logger.error(`[CALENDAR] Failed to sync event: ${errorMsg}`, err);
-      errors.push({ fixture: event.summary, error: err.message });
+      const error = ensureError(err);
+      error.fixture = event.summary;
+      error.fixtureId = fixtureId;
+      const errorMsg = `${event.summary} - ${error.message}`;
+      logger.error(`[CALENDAR] Failed to sync event: ${errorMsg}`, error);
+      errors.push({ fixture: event.summary, error: error.message });
       skipped++;
     }
     

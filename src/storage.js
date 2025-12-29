@@ -1,4 +1,4 @@
-import { logger } from './logger.js';
+import { logger, ensureError } from './logger.js';
 import { writeFile, readFile } from 'fs/promises';
 import { existsSync } from 'fs';
 import { join } from 'path';
@@ -9,7 +9,8 @@ export async function saveRunStatus(status) {
   try {
     await writeFile(STATUS_FILE, JSON.stringify(status, null, 2), 'utf-8');
   } catch (err) {
-    logger.error('[STORAGE] Failed to save run status', err);
+    const error = ensureError(err);
+    logger.error('[STORAGE] Failed to save run status', error);
   }
 }
 
@@ -25,10 +26,11 @@ export async function getLatestRunStatus() {
     const content = await readFile(STATUS_FILE, 'utf-8');
     return JSON.parse(content);
   } catch (err) {
-    logger.error('[STORAGE] Failed to read run status', err);
+    const error = ensureError(err);
+    logger.error('[STORAGE] Failed to read run status', error);
     return {
       status: 'error',
-      message: `Failed to read status: ${err.message}`
+      message: `Failed to read status: ${error.message}`
     };
   }
 }

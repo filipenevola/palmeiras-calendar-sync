@@ -6,7 +6,7 @@
  * All functions here must return matches in the standardized Match format.
  */
 
-import { logger } from '../logger.js';
+import { logger, ensureError } from '../logger.js';
 import * as cheerio from 'cheerio';
 
 const VERDAO_BASE_URL = 'https://ptd.verdao.net';
@@ -247,7 +247,8 @@ export async function fetchPalmeirasFixtures() {
     logger.info(`[RETRIEVAL] Total matches found: ${allMatches.length}`);
     return allMatches;
   } catch (err) {
-    logger.error('[RETRIEVAL] Failed to fetch fixtures', err);
+    const error = ensureError(err);
+    logger.error('[RETRIEVAL] Failed to fetch fixtures', error);
     throw err;
   }
 }
