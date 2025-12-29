@@ -5,7 +5,7 @@ import { saveRunStatus } from './storage.js';
 // Configuration
 // Palmeiras team ID in Football-Data.org
 // To find your team ID: GET https://api.football-data.org/v4/teams?name=Palmeiras
-let PALMEIRAS_TEAM_ID_FOOTBALL_DATA = 1780; // Football-Data.org team ID for Palmeiras
+let PALMEIRAS_TEAM_ID_FOOTBALL_DATA = 1769; // Football-Data.org team ID for Palmeiras (SE Palmeiras)
 const FOOTBALL_DATA_API_KEY = process.env.FOOTBALL_DATA_API_KEY;
 const GOOGLE_CREDENTIALS = process.env.GOOGLE_CREDENTIALS; // Base64 encoded service account JSON
 const GOOGLE_CALENDAR_ID = process.env.GOOGLE_CALENDAR_ID || 'primary';
@@ -207,19 +207,27 @@ async function fetchPalmeirasFixtures() {
     
     // Filter for future fixtures only
     const now = new Date();
-    // Accept SCHEDULED, TIMED, or any future match
+    // Accept matches that are in the future, regardless of status
+    // (Football-Data.org free tier sometimes marks future matches as FINISHED)
     const futureFixtures = (data.matches || []).filter(match => {
       // Check if match involves Palmeiras
       const involvesPalmeiras = match.homeTeam.id === teamId || match.awayTeam.id === teamId;
       if (!involvesPalmeiras) return false;
       
-      // Accept SCHEDULED or TIMED status (both indicate upcoming matches)
-      if (match.status !== 'SCHEDULED' && match.status !== 'TIMED') return false;
-      
-      // Check if match is in the future
+      // Check if match is in the future (primary check)
       if (!match.utcDate) return false;
       const matchDate = new Date(match.utcDate);
-      return matchDate > now;
+      const isFuture = matchDate > now;
+      
+      // Accept if:
+      // 1. Match is in the future (regardless of status - free tier sometimes marks future as FINISHED)
+      // 2. OR match has SCHEDULED/TIMED status (standard upcoming match statuses)
+      if (isFuture) {
+        return true; // Accept future matches even if status is FINISHED
+      }
+      
+      // Also accept SCHEDULED or TIMED status matches
+      return match.status === 'SCHEDULED' || match.status === 'TIMED';
     });
     
     logger.info(`[SYNC] Found ${futureFixtures.length} upcoming fixtures for Palmeiras`);
