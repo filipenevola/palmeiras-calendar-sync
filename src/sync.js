@@ -2,8 +2,10 @@ import { google } from 'googleapis';
 import { saveRunStatus } from './storage.js';
 
 // Configuration
+// Palmeiras team ID in Football-Data.org
+// To find your team ID: GET https://api.football-data.org/v4/teams?name=Palmeiras
 const PALMEIRAS_TEAM_ID_FOOTBALL_DATA = 1780; // Football-Data.org team ID for Palmeiras
-const FOOTBALL_DATA_API_KEY = process.env.FOOTBALL_DATA_API_KEY || process.env.API_FOOTBALL_KEY; // Support both env var names
+const FOOTBALL_DATA_API_KEY = process.env.FOOTBALL_DATA_API_KEY;
 const GOOGLE_CREDENTIALS = process.env.GOOGLE_CREDENTIALS; // Base64 encoded service account JSON
 const GOOGLE_CALENDAR_ID = process.env.GOOGLE_CALENDAR_ID || 'primary';
 
@@ -20,7 +22,7 @@ function log(level, message, data = null) {
 // Validate environment
 function validateEnv() {
   const missing = [];
-  if (!FOOTBALL_DATA_API_KEY) missing.push('FOOTBALL_DATA_API_KEY (or API_FOOTBALL_KEY)');
+  if (!FOOTBALL_DATA_API_KEY) missing.push('FOOTBALL_DATA_API_KEY');
   if (!GOOGLE_CREDENTIALS) missing.push('GOOGLE_CREDENTIALS');
   
   if (missing.length > 0) {

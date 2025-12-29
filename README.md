@@ -1,6 +1,6 @@
 # Palmeiras Calendar Sync ⚽
 
-Automatically sync Palmeiras fixtures to your Google Calendar using API-Football.
+Automatically sync Palmeiras fixtures to your Google Calendar using Football-Data.org API.
 
 ## Features
 
@@ -11,14 +11,15 @@ Automatically sync Palmeiras fixtures to your Google Calendar using API-Football
 - 🏠 Shows home (🏠) vs away (✈️) games
 - ⏰ 1-hour and 15-minute reminders
 - 🏆 Covers all competitions (Brasileirão, Copa do Brasil, Libertadores, Paulistão)
+- ✅ Supports future fixtures (no season restrictions!)
 
 ## Setup
 
-### 1. API-Football Key
+### 1. Football-Data.org API Key
 
-1. Sign up at [API-Football](https://www.api-football.com/)
-2. Get your free API key (100 requests/day)
-3. Add as GitHub secret: `API_FOOTBALL_KEY`
+1. Sign up at [Football-Data.org](https://www.football-data.org/)
+2. Get your free API key (10 requests/minute)
+3. Add as GitHub secret: `FOOTBALL_DATA_API_KEY`
 
 ### 2. Google Calendar Service Account
 
@@ -56,7 +57,7 @@ The app is configured to deploy automatically to Quave Cloud via GitHub Actions.
 
 | Secret | Description |
 |--------|-------------|
-| `API_FOOTBALL_KEY` | API-Football API key |
+| `FOOTBALL_DATA_API_KEY` | Football-Data.org API key |
 | `GOOGLE_CREDENTIALS` | Base64 encoded service account JSON |
 | `GOOGLE_CALENDAR_ID` | Google Calendar ID (or `primary`) |
 | `ZCLOUD_USER_TOKEN` | Quave Cloud environment token (required for deployment) |
@@ -64,13 +65,17 @@ The app is configured to deploy automatically to Quave Cloud via GitHub Actions.
 ## How It Works
 
 1. The app runs on Quave Cloud and syncs Palmeiras fixtures to your Google Calendar
-2. Fetches upcoming Palmeiras fixtures from API-Football
+2. Fetches upcoming Palmeiras fixtures from Football-Data.org API
 3. Creates/updates events in your Google Calendar
 4. Each event includes:
    - Match title with home/away indicator
-   - Competition name and round
+   - Competition name and matchday
    - Venue information
    - Automatic reminders
+
+## Why Football-Data.org?
+
+The app was migrated from API-Football because their free plan restricts access to future seasons. Football-Data.org's free tier provides access to scheduled/future fixtures without season restrictions, making it perfect for calendar syncs!
 
 ### Deployment
 
@@ -113,7 +118,7 @@ curl -fsSL https://bun.sh/install | bash
 bun install
 
 # Set environment variables
-export API_FOOTBALL_KEY="your-key"
+export FOOTBALL_DATA_API_KEY="your-key"  # Get free key at https://www.football-data.org/
 export GOOGLE_CREDENTIALS="base64-encoded-credentials"
 export GOOGLE_CALENDAR_ID="your-calendar-id"
 

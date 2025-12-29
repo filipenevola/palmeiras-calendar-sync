@@ -1,14 +1,14 @@
 {
   "name": "palmeiras-calendar-sync",
   "version": "1.0.0",
-  "description": "Sync Palmeiras fixtures to Google Calendar using API-Football",
+  "description": "Sync Palmeiras fixtures to Google Calendar using Football-Data.org API",
   "main": "src/index.js",
   "type": "module",
   "scripts": {
     "start": "bun run src/index.js",
     "sync": "bun run src/index.js"
   },
-  "keywords": ["palmeiras", "calendar", "football", "api-football"],
+  "keywords": ["palmeiras", "calendar", "football", "football-data.org"],
   "author": "Filipe Névola",
   "license": "MIT",
   "dependencies": {
