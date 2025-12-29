@@ -1,6 +1,6 @@
 # Palmeiras Calendar Sync ⚽
 
-Automatically sync Palmeiras fixtures to your Google Calendar using Football-Data.org API.
+Automatically sync Palmeiras fixtures to your Google Calendar using Sofascore API.
 
 ## Features
 
@@ -15,13 +15,9 @@ Automatically sync Palmeiras fixtures to your Google Calendar using Football-Dat
 
 ## Setup
 
-### 1. Football-Data.org API Key
+### 1. Google Calendar Service Account
 
-1. Sign up at [Football-Data.org](https://www.football-data.org/)
-2. Get your free API key (10 requests/minute)
-3. Add as GitHub secret: `FOOTBALL_DATA_API_KEY`
-
-### 2. Google Calendar Service Account
+**Note**: Sofascore API doesn't require an API key - it's free and open!
 
 1. Go to [Google Cloud Console](https://console.cloud.google.com/)
 2. Create a new project (or use existing)
@@ -32,7 +28,7 @@ Automatically sync Palmeiras fixtures to your Google Calendar using Football-Dat
 7. Base64 encode the JSON: `base64 -i service-account.json`
 8. Add as GitHub secret: `GOOGLE_CREDENTIALS`
 
-### 3. Share Calendar with Service Account
+### 2. Share Calendar with Service Account
 
 1. Open Google Calendar
 2. Go to calendar settings
@@ -41,7 +37,7 @@ Automatically sync Palmeiras fixtures to your Google Calendar using Football-Dat
 5. Copy the calendar ID (for your primary calendar, use your email)
 6. Add as GitHub secret: `GOOGLE_CALENDAR_ID`
 
-### 4. Quave Cloud Deployment
+### 3. Quave Cloud Deployment
 
 The app is configured to deploy automatically to Quave Cloud via GitHub Actions.
 
@@ -57,7 +53,6 @@ The app is configured to deploy automatically to Quave Cloud via GitHub Actions.
 
 | Secret | Description |
 |--------|-------------|
-| `FOOTBALL_DATA_API_KEY` | Football-Data.org API key |
 | `GOOGLE_CREDENTIALS` | Base64 encoded service account JSON |
 | `GOOGLE_CALENDAR_ID` | Google Calendar ID (or `primary`) |
 | `SLACK_ERROR_WEBHOOK` | Slack webhook URL for error notifications (optional) |
@@ -66,17 +61,17 @@ The app is configured to deploy automatically to Quave Cloud via GitHub Actions.
 ## How It Works
 
 1. The app runs on Quave Cloud and syncs Palmeiras fixtures to your Google Calendar
-2. Fetches upcoming Palmeiras fixtures from Football-Data.org API
+2. Fetches upcoming Palmeiras fixtures from Sofascore API (no API key required!)
 3. Creates/updates events in your Google Calendar
 4. Each event includes:
    - Match title with home/away indicator
-   - Competition name and matchday
+   - Tournament/competition name
    - Venue information
    - Automatic reminders
 
-## Why Football-Data.org?
+## Why Sofascore?
 
-The app was migrated from API-Football because their free plan restricts access to future seasons. Football-Data.org's free tier provides access to scheduled/future fixtures without season restrictions, making it perfect for calendar syncs!
+The app was migrated from Football-Data.org because their free tier doesn't provide access to future fixtures. Sofascore API is free, doesn't require authentication, and provides comprehensive fixture data including future matches from all competitions (Brasileirão, Copa do Brasil, Libertadores, Paulistão, etc.)!
 
 ### Deployment
 
@@ -119,7 +114,6 @@ curl -fsSL https://bun.sh/install | bash
 bun install
 
 # Set environment variables
-export FOOTBALL_DATA_API_KEY="your-key"  # Get free key at https://www.football-data.org/
 export GOOGLE_CREDENTIALS="base64-encoded-credentials"
 export GOOGLE_CALENDAR_ID="your-calendar-id"
 export SLACK_ERROR_WEBHOOK="https://hooks.slack.com/services/..."  # Optional: Slack webhook for error notifications
