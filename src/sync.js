@@ -14,27 +14,49 @@ const GOOGLE_CALENDAR_ID = process.env.GOOGLE_CALENDAR_ID || 'primary';
 async function findPalmeirasTeamId() {
   try {
     logger.info('[SYNC] Searching for Palmeiras team ID...');
-    const url = 'https://api.football-data.org/v4/teams?name=Palmeiras';
-    const response = await fetch(url, {
-      headers: {
-        'X-Auth-Token': FOOTBALL_DATA_API_KEY,
-        'Accept': 'application/json'
-      }
-    });
     
-    if (response.ok) {
-      const data = await response.json();
-      if (data.teams && data.teams.length > 0) {
-        const palmeiras = data.teams.find(t => 
-          t.name.toLowerCase().includes('palmeiras') || 
-          t.shortName.toLowerCase().includes('palmeiras')
-        );
-        if (palmeiras) {
-          logger.info(`[SYNC] Found Palmeiras team: ${palmeiras.name} (ID: ${palmeiras.id})`);
-          return palmeiras.id;
+    // Try multiple search terms
+    const searchTerms = ['Palmeiras', 'SE Palmeiras', 'Sociedade Esportiva Palmeiras'];
+    
+    for (const term of searchTerms) {
+      const url = `https://api.football-data.org/v4/teams?name=${encodeURIComponent(term)}`;
+      const response = await fetch(url, {
+        headers: {
+          'X-Auth-Token': FOOTBALL_DATA_API_KEY,
+          'Accept': 'application/json'
+        }
+      });
+      
+      if (response.ok) {
+        const data = await response.json();
+        if (data.teams && data.teams.length > 0) {
+          logger.info(`[SYNC] Found ${data.teams.length} teams matching "${term}"`);
+          
+          // Look for Palmeiras in various forms
+          const palmeiras = data.teams.find(t => {
+            const name = (t.name || '').toLowerCase();
+            const shortName = (t.shortName || '').toLowerCase();
+            const tla = (t.tla || '').toLowerCase();
+            return name.includes('palmeiras') || 
+                   shortName.includes('palmeiras') || 
+                   tla === 'pal' ||
+                   name.includes('sociedade esportiva palmeiras');
+          });
+          
+          if (palmeiras) {
+            logger.info(`[SYNC] Found Palmeiras team: ${palmeiras.name} (ID: ${palmeiras.id}, TLA: ${palmeiras.tla})`);
+            return palmeiras.id;
+          }
+          
+          // Log all teams found for debugging
+          data.teams.slice(0, 5).forEach(team => {
+            logger.info(`[SYNC] Team found: ${team.name} (ID: ${team.id}, TLA: ${team.tla})`);
+          });
         }
       }
     }
+    
+    logger.warn('[SYNC] Could not find Palmeiras team ID via search');
   } catch (err) {
     logger.warn('[SYNC] Failed to search for team ID', err);
   }
@@ -105,14 +127,26 @@ async function fetchPalmeirasFixtures() {
     logger.info(`[SYNC] API returned ${data.matches?.length || 0} total matches`);
     if (data.matches && data.matches.length > 0) {
       const statuses = {};
+      const teamsInMatches = new Set();
       data.matches.forEach(match => {
         statuses[match.status] = (statuses[match.status] || 0) + 1;
+        teamsInMatches.add(`${match.homeTeam.name} (ID: ${match.homeTeam.id})`);
+        teamsInMatches.add(`${match.awayTeam.name} (ID: ${match.awayTeam.id})`);
       });
       logger.info(`[SYNC] Match statuses: ${JSON.stringify(statuses)}`);
+      logger.info(`[SYNC] Teams in matches: ${Array.from(teamsInMatches).slice(0, 5).join(', ')}`);
+      logger.info(`[SYNC] Looking for team ID: ${teamId}`);
+      
+      // Check if any matches involve our team
+      const matchesWithOurTeam = data.matches.filter(m => 
+        m.homeTeam.id === teamId || m.awayTeam.id === teamId
+      );
+      logger.info(`[SYNC] Matches involving team ID ${teamId}: ${matchesWithOurTeam.length}`);
       
       // Log first few matches for debugging
       data.matches.slice(0, 3).forEach(match => {
-        logger.info(`[SYNC] Sample match: ${match.homeTeam.name} vs ${match.awayTeam.name} - Status: ${match.status} - Date: ${match.utcDate}`);
+        const involvesOurTeam = match.homeTeam.id === teamId || match.awayTeam.id === teamId;
+        logger.info(`[SYNC] Sample match: ${match.homeTeam.name} (${match.homeTeam.id}) vs ${match.awayTeam.name} (${match.awayTeam.id}) - Status: ${match.status} - Date: ${match.utcDate} - Our team: ${involvesOurTeam ? 'YES' : 'NO'}`);
       });
     }
     
