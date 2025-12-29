@@ -13,15 +13,19 @@ const VERDAO_BASE_URL = 'https://ptd.verdao.net';
 
 /**
  * Generates the list of pages to scrape based on current year
+ * If we're past December 20th, use next year instead
  * @returns {Array<{url: string, competition: string}>}
  */
 function getVerdaoPages() {
-  const currentYear = new Date().getFullYear();
+  const now = new Date();
+  const currentYear = now.getFullYear();
+  // If we're past December 20th, use next year for URLs
+  const year = (now.getMonth() === 11 && now.getDate() > 20) ? currentYear + 1 : currentYear;
   return [
-    { url: `${VERDAO_BASE_URL}/brasileirao-${currentYear}/`, competition: `Brasileirão ${currentYear}` },
-    { url: `${VERDAO_BASE_URL}/paulista-${currentYear}/`, competition: `Paulista ${currentYear}` },
-    { url: `${VERDAO_BASE_URL}/copa-do-brasil-${currentYear}/`, competition: `Copa do Brasil ${currentYear}` },
-    { url: `${VERDAO_BASE_URL}/libertadores-${currentYear}/`, competition: `Libertadores ${currentYear}` },
+    { url: `${VERDAO_BASE_URL}/brasileirao-${year}/`, competition: `Brasileirão ${year}` },
+    { url: `${VERDAO_BASE_URL}/paulista-${year}/`, competition: `Paulista ${year}` },
+    { url: `${VERDAO_BASE_URL}/copa-do-brasil-${year}/`, competition: `Copa do Brasil ${year}` },
+    { url: `${VERDAO_BASE_URL}/libertadores-${year}/`, competition: `Libertadores ${year}` },
     { url: `${VERDAO_BASE_URL}/`, competition: 'Próximos Jogos' }, // Home page
   ];
 }
