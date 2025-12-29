@@ -1,4 +1,5 @@
 import { google } from 'googleapis';
+import { logger } from './logger.js';
 import { saveRunStatus } from './storage.js';
 
 // Configuration
@@ -9,16 +10,6 @@ const FOOTBALL_DATA_API_KEY = process.env.FOOTBALL_DATA_API_KEY;
 const GOOGLE_CREDENTIALS = process.env.GOOGLE_CREDENTIALS; // Base64 encoded service account JSON
 const GOOGLE_CALENDAR_ID = process.env.GOOGLE_CALENDAR_ID || 'primary';
 
-// Enhanced logging
-function log(level, message, data = null) {
-  const timestamp = new Date().toISOString();
-  const logEntry = `[${timestamp}] [${level}] ${message}`;
-  console.log(logEntry);
-  if (data) {
-    console.log(JSON.stringify(data, null, 2));
-  }
-}
-
 // Validate environment
 function validateEnv() {
   const missing = [];
@@ -26,14 +17,15 @@ function validateEnv() {
   if (!GOOGLE_CREDENTIALS) missing.push('GOOGLE_CREDENTIALS');
   
   if (missing.length > 0) {
-    log('ERROR', `Missing environment variables: ${missing.join(', ')}`);
-    throw new Error(`Missing environment variables: ${missing.join(', ')}`);
+    const errorMsg = `Missing environment variables: ${missing.join(', ')}`;
+    logger.error('[SYNC] Missing environment variables', new Error(errorMsg));
+    throw new Error(errorMsg);
   }
 }
 
 // Fetch fixtures from Football-Data.org API
 async function fetchPalmeirasFixtures() {
-  log('INFO', 'Fetching Palmeiras fixtures from Football-Data.org...');
+  logger.info('[SYNC] Fetching Palmeiras fixtures from Football-Data.org...');
   
   try {
     // Football-Data.org API endpoint for team matches
@@ -48,14 +40,20 @@ async function fetchPalmeirasFixtures() {
     
     if (!response.ok) {
       const errorText = await response.text();
-      log('ERROR', `Football-Data.org HTTP error: ${response.status} ${response.statusText}`, { errorText });
+      const error = new Error(`Football-Data.org HTTP error: ${response.status} ${response.statusText}. ${errorText}`);
+      error.status = response.status;
+      error.statusText = response.statusText;
+      error.errorText = errorText;
+      logger.error('[SYNC] Football-Data.org HTTP error', error);
       
       // If 401, provide helpful error message
       if (response.status === 401) {
-        throw new Error('Football-Data.org authentication failed. Please check your API key. Get a free key at https://www.football-data.org/');
+        const authError = new Error('Football-Data.org authentication failed. Please check your API key. Get a free key at https://www.football-data.org/');
+        logger.error('[SYNC] Authentication failed', authError);
+        throw authError;
       }
       
-      throw new Error(`Football-Data.org error: ${response.status} ${response.statusText}`);
+      throw error;
     }
     
     const data = await response.json();
@@ -67,11 +65,11 @@ async function fetchPalmeirasFixtures() {
       return matchDate > now;
     });
     
-    log('INFO', `Found ${futureFixtures.length} upcoming fixtures`);
+    logger.info(`[SYNC] Found ${futureFixtures.length} upcoming fixtures`);
     
     return futureFixtures;
   } catch (err) {
-    log('ERROR', 'Failed to fetch fixtures', { error: err.message, stack: err.stack });
+    logger.error('[SYNC] Failed to fetch fixtures', err);
     throw err;
   }
 }
@@ -132,10 +130,10 @@ async function getCalendarClient() {
       scopes: ['https://www.googleapis.com/auth/calendar'],
     });
     
-    log('INFO', 'Google Calendar client initialized successfully');
+    logger.info('[SYNC] Google Calendar client initialized successfully');
     return google.calendar({ version: 'v3', auth });
   } catch (err) {
-    log('ERROR', 'Failed to initialize Google Calendar client', { error: err.message });
+    logger.error('[SYNC] Failed to initialize Google Calendar client', err);
     throw err;
   }
 }
@@ -169,17 +167,17 @@ async function getExistingEvents(calendar) {
       }
     }
     
-    log('INFO', `Found ${fixtureMap.size} existing Palmeiras events in calendar`);
+    logger.info(`[SYNC] Found ${fixtureMap.size} existing Palmeiras events in calendar`);
     return fixtureMap;
   } catch (err) {
-    log('ERROR', 'Failed to fetch existing events', { error: err.message });
+    logger.error('[SYNC] Failed to fetch existing events', err);
     throw err;
   }
 }
 
 // Sync fixtures to calendar
 async function syncToCalendar(fixtures) {
-  log('INFO', 'Starting calendar sync...');
+  logger.info('[SYNC] Starting calendar sync...');
   
   const calendar = await getCalendarClient();
   const existingEvents = await getExistingEvents(calendar);
@@ -202,7 +200,7 @@ async function syncToCalendar(fixtures) {
           eventId: existingEventId,
           resource: event,
         });
-        log('INFO', `Updated: ${event.summary}`);
+        logger.info(`[SYNC] Updated: ${event.summary}`);
         updated++;
       } else {
         // Create new event
@@ -210,12 +208,14 @@ async function syncToCalendar(fixtures) {
           calendarId: GOOGLE_CALENDAR_ID,
           resource: event,
         });
-        log('INFO', `Created: ${event.summary}`);
+        logger.info(`[SYNC] Created: ${event.summary}`);
         created++;
       }
     } catch (err) {
       const errorMsg = `${event.summary} - ${err.message}`;
-      log('ERROR', `Failed to sync event: ${errorMsg}`);
+      err.fixture = event.summary;
+      err.fixtureId = fixtureId;
+      logger.error(`[SYNC] Failed to sync event: ${errorMsg}`, err);
       errors.push({ fixture: event.summary, error: err.message });
       skipped++;
     }
@@ -224,7 +224,7 @@ async function syncToCalendar(fixtures) {
     await new Promise(resolve => setTimeout(resolve, 100));
   }
   
-  log('INFO', `Sync complete: ${created} created, ${updated} updated, ${skipped} errors`);
+  logger.info(`[SYNC] Sync complete: ${created} created, ${updated} updated, ${skipped} errors`);
   
   return { created, updated, skipped, errors };
 }
@@ -234,8 +234,8 @@ export async function runSync() {
   const startTime = Date.now();
   const runId = `sync-${Date.now()}`;
   
-  log('INFO', '⚽ Palmeiras Calendar Sync Started', { runId });
-  log('INFO', '═'.repeat(50));
+  logger.info('⚽ Palmeiras Calendar Sync Started', { runId });
+  logger.info('═'.repeat(50));
   
   try {
     validateEnv();
@@ -243,7 +243,7 @@ export async function runSync() {
     const fixtures = await fetchPalmeirasFixtures();
     
     if (fixtures.length === 0) {
-      log('WARN', 'No upcoming fixtures found');
+      logger.warn('[SYNC] No upcoming fixtures found');
       const result = {
         runId,
         status: 'success',
@@ -262,7 +262,7 @@ export async function runSync() {
     }
     
     // Log fixtures summary
-    log('INFO', `Fixtures to sync: ${fixtures.length}`);
+    logger.info(`[SYNC] Fixtures to sync: ${fixtures.length}`);
     fixtures.slice(0, 5).forEach(f => {
       const isHome = f.homeTeam.id === PALMEIRAS_TEAM_ID_FOOTBALL_DATA;
       const opponent = isHome ? f.awayTeam.name : f.homeTeam.name;
@@ -271,10 +271,10 @@ export async function runSync() {
         dateStyle: 'short',
         timeStyle: 'short'
       });
-      log('INFO', `  ${date} - ${isHome ? '🏠' : '✈️'} vs ${opponent} [${f.competition.name}]`);
+      logger.info(`  ${date} - ${isHome ? '🏠' : '✈️'} vs ${opponent} [${f.competition.name}]`);
     });
     if (fixtures.length > 5) {
-      log('INFO', `  ... and ${fixtures.length - 5} more`);
+      logger.info(`  ... and ${fixtures.length - 5} more`);
     }
     
     const syncResult = await syncToCalendar(fixtures);
@@ -294,12 +294,12 @@ export async function runSync() {
     };
     
     await saveRunStatus(result);
-    log('INFO', '🎉 Sync complete! Vai Palmeiras!');
+    logger.info('🎉 Sync complete! Vai Palmeiras!');
     
     return result;
     
   } catch (err) {
-    log('ERROR', 'Sync failed', { error: err.message, stack: err.stack });
+    logger.error('[SYNC] Sync failed', err);
     
     const result = {
       runId,

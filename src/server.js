@@ -1,3 +1,4 @@
+import { logger } from './logger.js';
 import { runSync } from './sync.js';
 import { getLatestRunStatus } from './storage.js';
 
@@ -192,7 +193,7 @@ const HTML = `
         const data = await response.json();
         updateUI(data);
       } catch (err) {
-        console.error('Failed to load status:', err);
+        logger.error('[SERVER] Failed to load status', err);
         showMessage('Erro ao carregar status', 'error');
       }
     }
@@ -383,7 +384,7 @@ export function createServer() {
           
           // Run sync in background
           runSync().catch(err => {
-            console.error('[ERROR] Background sync failed:', err);
+            logger.error('[SERVER] Background sync failed', err);
           });
           
           return Response.json({ 
@@ -404,9 +405,9 @@ export function createServer() {
     },
   });
 
-  console.log(`🚀 Server running on http://localhost:${server.port}`);
-  console.log(`📊 Dashboard: http://localhost:${server.port}/`);
-  console.log(`🔍 Health check: http://localhost:${server.port}/health`);
+  logger.info(`🚀 Server running on http://localhost:${server.port}`);
+  logger.info(`📊 Dashboard: http://localhost:${server.port}/`);
+  logger.info(`🔍 Health check: http://localhost:${server.port}/health`);
   
   return server;
 }

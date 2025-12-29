@@ -60,6 +60,7 @@ The app is configured to deploy automatically to Quave Cloud via GitHub Actions.
 | `FOOTBALL_DATA_API_KEY` | Football-Data.org API key |
 | `GOOGLE_CREDENTIALS` | Base64 encoded service account JSON |
 | `GOOGLE_CALENDAR_ID` | Google Calendar ID (or `primary`) |
+| `SLACK_ERROR_WEBHOOK` | Slack webhook URL for error notifications (optional) |
 | `ZCLOUD_USER_TOKEN` | Quave Cloud environment token (required for deployment) |
 
 ## How It Works
@@ -121,6 +122,7 @@ bun install
 export FOOTBALL_DATA_API_KEY="your-key"  # Get free key at https://www.football-data.org/
 export GOOGLE_CREDENTIALS="base64-encoded-credentials"
 export GOOGLE_CALENDAR_ID="your-calendar-id"
+export SLACK_ERROR_WEBHOOK="https://hooks.slack.com/services/..."  # Optional: Slack webhook for error notifications
 
 # Start the web server (includes dashboard)
 bun run start

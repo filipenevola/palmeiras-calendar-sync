@@ -12,6 +12,7 @@
   "author": "Filipe Névola",
   "license": "MIT",
   "dependencies": {
+    "@quave/logger": "^1.0.1",
     "googleapis": "^144.0.0",
     "node-cron": "^3.0.3"
   }
