@@ -5,7 +5,7 @@
     "": {
       "name": "palmeiras-calendar-sync",
       "dependencies": {
-        "@quave/logger": "^1.0.2",
+        "@quave/logger": "^1.0.3",
         "cheerio": "^1.1.2",
         "googleapis": "^144.0.0",
         "node-cron": "^3.0.3",
@@ -13,7 +13,7 @@
     },
   },
   "packages": {
-    "@quave/logger": ["@quave/logger@1.0.2", "", { "dependencies": { "slack-notify": "^2.0.7" } }, "sha512-59uHO+FkTFMXG756mArxC1iWVZZdhi4hnKI56ArH12BtRv2kKS1yqqNS1+wNUbRNLzdPwCAq6NVXgCj2rcoIyQ=="],
+    "@quave/logger": ["@quave/logger@1.0.3", "", { "dependencies": { "slack-notify": "^2.0.7" } }, "sha512-lo4VuJSQqj9mTv42eq90n6uxCoTO+jsC558BcwsWeFFdDNyXLRWatt0v9wNlZgTjL1y29nZY+UcAFJ3LKaQJyw=="],
 
     "agent-base": ["agent-base@7.1.4", "", {}, "sha512-MnA+YT8fwfJPgBx3m60MNqakm30XOkyIoH1y6huTQvC0PwZG7ki8NacLBcrPbNoo8vEZy7Jpuk7+jMO+CUovTQ=="],
 
