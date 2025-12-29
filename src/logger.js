@@ -2,9 +2,22 @@ import { createLogger } from '@quave/logger';
 
 // Initialize logger with Slack error webhook
 const slackWebhookUrl = process.env.SLACK_ERROR_WEBHOOK;
-const isSlackEnabled = !!slackWebhookUrl;
 
-if (!isSlackEnabled) {
+// Validate Slack webhook URL format
+function isValidSlackWebhook(url) {
+  if (!url) return false;
+  // Slack webhooks typically start with https://hooks.slack.com/services/
+  return typeof url === 'string' && 
+         url.startsWith('https://hooks.slack.com/services/') &&
+         url.length > 40; // Basic length check
+}
+
+const isSlackEnabled = isValidSlackWebhook(slackWebhookUrl);
+
+if (process.env.SLACK_ERROR_WEBHOOK && !isSlackEnabled) {
+  console.warn('[LOGGER] SLACK_ERROR_WEBHOOK appears to be invalid - Slack notifications disabled');
+  console.warn('[LOGGER] Webhook URL should start with: https://hooks.slack.com/services/');
+} else if (!isSlackEnabled) {
   console.warn('[LOGGER] SLACK_ERROR_WEBHOOK not set - Slack notifications disabled');
 }
 
@@ -17,11 +30,15 @@ export const logger = createLogger({
   },
   slack: {
     enabled: isSlackEnabled,
-    webhookUrl: slackWebhookUrl, // Required: default webhook URL
-    webhookUrls: {
+    webhookUrl: isSlackEnabled ? slackWebhookUrl : undefined,
+    webhookUrls: isSlackEnabled ? {
       error: slackWebhookUrl, // Override for errors specifically
-    },
+    } : undefined,
     skipInDevelopment: false, // Changed to false to test in any environment
+
+    channels: {
+      error: '#filipenevola-error'
+    },
   },
 });
 
