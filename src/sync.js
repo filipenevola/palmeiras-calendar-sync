@@ -137,20 +137,46 @@ async function fetchPalmeirasFixtures() {
   
   try {
     // Fetch matches from all competitions (the team endpoint returns matches from all competitions)
-    // Use dateFrom parameter to get future matches (today onwards)
+    // Try without dateFrom first to get all matches, then filter client-side
+    // Also try with status=SCHEDULED to get upcoming matches
     const today = new Date().toISOString().split('T')[0]; // YYYY-MM-DD format
-    const url = `https://api.football-data.org/v4/teams/${teamId}/matches?limit=100&dateFrom=${today}`;
+    let url = `https://api.football-data.org/v4/teams/${teamId}/matches?limit=100&dateFrom=${today}`;
     
     logger.info(`[SYNC] Fetching matches from all competitions for team ${teamId}...`);
     logger.info(`[SYNC] Using dateFrom: ${today} to get future matches`);
-    logger.debug('[SYNC] Fetching matches from', url);
     
-    const response = await fetch(url, {
+    let response = await fetch(url, {
       headers: {
         'X-Auth-Token': FOOTBALL_DATA_API_KEY,
         'Accept': 'application/json'
       }
     });
+    
+    // If dateFrom doesn't return results, try without it to get all matches
+    let data;
+    if (response.ok) {
+      data = await response.json();
+      logger.info(`[SYNC] API returned ${data.matches?.length || 0} matches with dateFrom=${today}`);
+    }
+    
+    // If no matches or very few, try without dateFrom to get all matches
+    if (!response.ok || !data || !data.matches || data.matches.length < 10) {
+      logger.info(`[SYNC] Trying without dateFrom to get all matches...`);
+      url = `https://api.football-data.org/v4/teams/${teamId}/matches?limit=200`;
+      logger.debug('[SYNC] Fetching matches from', url);
+      
+      response = await fetch(url, {
+        headers: {
+          'X-Auth-Token': FOOTBALL_DATA_API_KEY,
+          'Accept': 'application/json'
+        }
+      });
+      
+      if (response.ok) {
+        data = await response.json();
+        logger.info(`[SYNC] API returned ${data.matches?.length || 0} total matches without dateFrom`);
+      }
+    }
     
     if (!response.ok) {
       const errorText = await response.text();
@@ -170,7 +196,9 @@ async function fetchPalmeirasFixtures() {
       throw error;
     }
     
-    const data = await response.json();
+    if (!data) {
+      data = await response.json();
+    }
     
     // Debug: log what we received
     logger.info(`[SYNC] API returned ${data.matches?.length || 0} total matches`);
