@@ -10,90 +10,92 @@ const FOOTBALL_DATA_API_KEY = process.env.FOOTBALL_DATA_API_KEY;
 const GOOGLE_CREDENTIALS = process.env.GOOGLE_CREDENTIALS; // Base64 encoded service account JSON
 const GOOGLE_CALENDAR_ID = process.env.GOOGLE_CALENDAR_ID || 'primary';
 
-// Helper function to search for Palmeiras team ID
+// Helper function to search for Palmeiras team ID across multiple competitions
 async function findPalmeirasTeamId() {
   try {
-    logger.info('[SYNC] Searching for Palmeiras team ID...');
+    logger.info('[SYNC] Searching for Palmeiras team ID across all competitions...');
     
-    // Try searching Brazilian Serie A competition (BSA) - competition ID 2013
-    // First, get teams from Brazilian Serie A
-    const competitionId = 2013; // Brazilian Serie A
-    const url = `https://api.football-data.org/v4/competitions/${competitionId}/teams`;
-    logger.info(`[SYNC] Searching in Brazilian Serie A (competition ${competitionId})...`);
+    // Search in multiple competitions where Palmeiras plays:
+    // - Brazilian Serie A (2013)
+    // - Copa do Brasil (2014)
+    // - Copa Libertadores (2152)
+    // - Paulistão/São Paulo State Championship (check if available)
+    const competitions = [
+      { id: 2013, name: 'Brazilian Serie A' },
+      { id: 2014, name: 'Copa do Brasil' },
+      { id: 2152, name: 'Copa Libertadores' },
+    ];
     
-    const response = await fetch(url, {
+    for (const comp of competitions) {
+      try {
+        const url = `https://api.football-data.org/v4/competitions/${comp.id}/teams`;
+        logger.info(`[SYNC] Searching in ${comp.name} (competition ${comp.id})...`);
+        
+        const response = await fetch(url, {
+          headers: {
+            'X-Auth-Token': FOOTBALL_DATA_API_KEY,
+            'Accept': 'application/json'
+          }
+        });
+        
+        if (response.ok) {
+          const data = await response.json();
+          if (data.teams && data.teams.length > 0) {
+            logger.info(`[SYNC] Found ${data.teams.length} teams in ${comp.name}`);
+            
+            // Look for Palmeiras
+            const palmeiras = data.teams.find(t => {
+              const name = (t.name || '').toLowerCase();
+              const shortName = (t.shortName || '').toLowerCase();
+              const tla = (t.tla || '').toLowerCase();
+              
+              return name.includes('palmeiras') || 
+                     shortName.includes('palmeiras') || 
+                     tla === 'pal' ||
+                     name.includes('sociedade esportiva palmeiras');
+            });
+            
+            if (palmeiras) {
+              logger.info(`[SYNC] Found Palmeiras team: ${palmeiras.name} (ID: ${palmeiras.id}, TLA: ${palmeiras.tla}) in ${comp.name}`);
+              return palmeiras.id;
+            }
+          }
+        } else {
+          logger.debug(`[SYNC] ${comp.name} not available (${response.status})`);
+        }
+      } catch (err) {
+        logger.debug(`[SYNC] Error searching ${comp.name}:`, err.message);
+      }
+    }
+    
+    // Fallback: Try direct team search with Brazilian filter
+    logger.info('[SYNC] Trying direct team search...');
+    const searchUrl = `https://api.football-data.org/v4/teams?name=${encodeURIComponent('Palmeiras')}`;
+    const searchResponse = await fetch(searchUrl, {
       headers: {
         'X-Auth-Token': FOOTBALL_DATA_API_KEY,
         'Accept': 'application/json'
       }
     });
     
-    if (response.ok) {
-      const data = await response.json();
-      if (data.teams && data.teams.length > 0) {
-        logger.info(`[SYNC] Found ${data.teams.length} teams in Brazilian Serie A`);
+    if (searchResponse.ok) {
+      const searchData = await searchResponse.json();
+      if (searchData.teams && searchData.teams.length > 0) {
+        // Filter for Brazilian teams only
+        const brazilianTeams = searchData.teams.filter(t => 
+          (t.area?.name || '').toLowerCase() === 'brazil'
+        );
         
-        // Look for Palmeiras
-        const palmeiras = data.teams.find(t => {
-          const name = (t.name || '').toLowerCase();
-          const shortName = (t.shortName || '').toLowerCase();
-          const tla = (t.tla || '').toLowerCase();
-          const areaName = (t.area?.name || '').toLowerCase();
+        if (brazilianTeams.length > 0) {
+          logger.info(`[SYNC] Found ${brazilianTeams.length} Brazilian teams matching "Palmeiras"`);
+          const palmeiras = brazilianTeams.find(t => {
+            const name = (t.name || '').toLowerCase();
+            return name.includes('palmeiras');
+          });
           
-          return name.includes('palmeiras') || 
-                 shortName.includes('palmeiras') || 
-                 tla === 'pal' ||
-                 name.includes('sociedade esportiva palmeiras') ||
-                 (areaName === 'brazil' && (name.includes('palmeiras') || tla === 'pal'));
-        });
-        
-        if (palmeiras) {
-          logger.info(`[SYNC] Found Palmeiras team: ${palmeiras.name} (ID: ${palmeiras.id}, TLA: ${palmeiras.tla})`);
-          return palmeiras.id;
-        }
-        
-        // Log all Brazilian teams found for debugging
-        logger.info('[SYNC] Brazilian Serie A teams found:');
-        data.teams.slice(0, 10).forEach(team => {
-          logger.info(`[SYNC]   - ${team.name} (ID: ${team.id}, TLA: ${team.tla})`);
-        });
-      }
-    } else {
-      logger.warn(`[SYNC] Failed to fetch Brazilian Serie A teams: ${response.status}`);
-    }
-    
-    // Fallback: Try direct team search with more specific terms
-    logger.info('[SYNC] Trying direct team search...');
-    const searchTerms = ['Palmeiras'];
-    
-    for (const term of searchTerms) {
-      const searchUrl = `https://api.football-data.org/v4/teams?name=${encodeURIComponent(term)}`;
-      const searchResponse = await fetch(searchUrl, {
-        headers: {
-          'X-Auth-Token': FOOTBALL_DATA_API_KEY,
-          'Accept': 'application/json'
-        }
-      });
-      
-      if (searchResponse.ok) {
-        const searchData = await searchResponse.json();
-        if (searchData.teams && searchData.teams.length > 0) {
-          // Filter for Brazilian teams only
-          const brazilianTeams = searchData.teams.filter(t => 
-            (t.area?.name || '').toLowerCase() === 'brazil'
-          );
-          
-          if (brazilianTeams.length > 0) {
-            logger.info(`[SYNC] Found ${brazilianTeams.length} Brazilian teams matching "${term}"`);
-            const palmeiras = brazilianTeams.find(t => {
-              const name = (t.name || '').toLowerCase();
-              return name.includes('palmeiras');
-            });
-            
-            if (palmeiras) {
-              logger.info(`[SYNC] Found Palmeiras team: ${palmeiras.name} (ID: ${palmeiras.id}, TLA: ${palmeiras.tla})`);
-              return palmeiras.id;
-            }
+          if (palmeiras) {
+            logger.info(`[SYNC] Found Palmeiras team: ${palmeiras.name} (ID: ${palmeiras.id}, TLA: ${palmeiras.tla})`);
+            return palmeiras.id;
           }
         }
       }
@@ -134,9 +136,11 @@ async function fetchPalmeirasFixtures() {
   logger.info(`[SYNC] Using team ID: ${teamId}`);
   
   try {
-    // Try fetching matches without status filter first to see what we get
-    const url = `https://api.football-data.org/v4/teams/${teamId}/matches?limit=50`;
+    // Fetch matches from all competitions (the team endpoint returns matches from all competitions)
+    // Increase limit to get more matches and include future dates
+    const url = `https://api.football-data.org/v4/teams/${teamId}/matches?limit=100`;
     
+    logger.info(`[SYNC] Fetching matches from all competitions for team ${teamId}...`);
     logger.debug('[SYNC] Fetching matches from', url);
     
     const response = await fetch(url, {
@@ -170,13 +174,20 @@ async function fetchPalmeirasFixtures() {
     logger.info(`[SYNC] API returned ${data.matches?.length || 0} total matches`);
     if (data.matches && data.matches.length > 0) {
       const statuses = {};
+      const competitions = new Set();
       const teamsInMatches = new Set();
+      
       data.matches.forEach(match => {
         statuses[match.status] = (statuses[match.status] || 0) + 1;
+        if (match.competition) {
+          competitions.add(`${match.competition.name} (${match.competition.code || 'N/A'})`);
+        }
         teamsInMatches.add(`${match.homeTeam.name} (ID: ${match.homeTeam.id})`);
         teamsInMatches.add(`${match.awayTeam.name} (ID: ${match.awayTeam.id})`);
       });
+      
       logger.info(`[SYNC] Match statuses: ${JSON.stringify(statuses)}`);
+      logger.info(`[SYNC] Competitions found: ${Array.from(competitions).join(', ')}`);
       logger.info(`[SYNC] Teams in matches: ${Array.from(teamsInMatches).slice(0, 5).join(', ')}`);
       logger.info(`[SYNC] Looking for team ID: ${teamId}`);
       
@@ -186,10 +197,11 @@ async function fetchPalmeirasFixtures() {
       );
       logger.info(`[SYNC] Matches involving team ID ${teamId}: ${matchesWithOurTeam.length}`);
       
-      // Log first few matches for debugging
-      data.matches.slice(0, 3).forEach(match => {
+      // Log first few matches with competition info for debugging
+      data.matches.slice(0, 5).forEach(match => {
         const involvesOurTeam = match.homeTeam.id === teamId || match.awayTeam.id === teamId;
-        logger.info(`[SYNC] Sample match: ${match.homeTeam.name} (${match.homeTeam.id}) vs ${match.awayTeam.name} (${match.awayTeam.id}) - Status: ${match.status} - Date: ${match.utcDate} - Our team: ${involvesOurTeam ? 'YES' : 'NO'}`);
+        const compName = match.competition?.name || 'Unknown';
+        logger.info(`[SYNC] Sample match: ${match.homeTeam.name} (${match.homeTeam.id}) vs ${match.awayTeam.name} (${match.awayTeam.id}) - Competition: ${compName} - Status: ${match.status} - Date: ${match.utcDate} - Our team: ${involvesOurTeam ? 'YES' : 'NO'}`);
       });
     }
     
