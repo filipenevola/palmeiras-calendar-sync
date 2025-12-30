@@ -252,9 +252,12 @@ function parseMatchesFromHTML(html, competition, pageUrl) {
                      tvLower.includes('barueri') ||
                      tvLower.includes('allianz');
       
+      // Clean opponent: remove leading/trailing "x" from "Palmeiras x Opponent" format
+      const cleanOpponent = opponent.trim().replace(/^x\s+/i, '').replace(/\s+x$/i, '').trim();
+      
       matches.push({
         date: matchDate,
-        opponent: opponent.trim(),
+        opponent: cleanOpponent,
         location: location.trim(),
         broadcast: parseBroadcast(tv),
         competition: competition,
@@ -298,9 +301,12 @@ function parseMatchesFromHTML(html, competition, pageUrl) {
                            textLower.includes('barueri') ||
                            textLower.includes('allianz');
             
+            // Clean opponent: remove leading/trailing "x" from "Palmeiras x Opponent" format
+            const cleanOpponent = opponent.trim().replace(/^x\s+/i, '').replace(/\s+x$/i, '').trim();
+            
             matches.push({
               date: matchDate,
-              opponent: opponent.trim(),
+              opponent: cleanOpponent,
               location: location.trim(),
               broadcast: parseBroadcast(broadcast),
               competition: competition,
