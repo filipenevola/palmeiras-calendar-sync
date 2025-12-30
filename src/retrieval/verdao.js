@@ -39,33 +39,6 @@ const VERDAO_HEADERS = {
 };
 
 /**
- * Checks if the response body indicates a 404 or page not found
- * @param {string} html - The HTML content to check
- * @returns {boolean} - True if this looks like a 404 page
- */
-function isNotFoundPage(html) {
-  if (!html || html.length === 0) return true;
-  
-  const htmlLower = html.toLowerCase();
-  // Common 404 indicators
-  const notFoundIndicators = [
-    '404',
-    'not found',
-    'página não encontrada',
-    'página não existe',
-    'não encontrada',
-    'erro 404',
-    'page not found',
-    'nothing found',
-    'no posts found',
-    'nenhum resultado',
-    'sem resultados'
-  ];
-  
-  return notFoundIndicators.some(indicator => htmlLower.includes(indicator));
-}
-
-/**
  * Fetches HTML from a URL with retry logic
  * Returns null if the page is not found (404) or not published yet
  * @param {string} url - URL to fetch
@@ -81,13 +54,6 @@ async function fetchHTML(url, retries = 3) {
       if (response.ok) {
         const html = await response.text();
         logger.debug(`[RETRIEVAL] Success! Got ${html.length} bytes`);
-        
-        // Check if the response body indicates a 404 page
-        if (isNotFoundPage(html)) {
-          logger.info(`[RETRIEVAL] Page appears to be 404/not found: ${url}`);
-          return null;
-        }
-        
         return html;
       }
       
