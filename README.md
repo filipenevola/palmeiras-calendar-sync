@@ -1,23 +1,25 @@
 # Palmeiras Calendar Sync ⚽
 
-Automatically sync Palmeiras fixtures to your Google Calendar using Sofascore API.
+Automatically sync Palmeiras fixtures to your Google Calendar.
 
 ## Features
 
 - 🌐 **Web Dashboard** - Simple UI to view sync status and trigger manual syncs
-- 📊 **Enhanced Logging** - Detailed logs stored in `/tmp` for debugging
+- 📊 **Enhanced Logging** - Detailed logs for debugging
 - 🔄 **Daily Automatic Sync** - Runs automatically every day using in-app cron scheduling
 - 📅 Creates/updates Google Calendar events
 - 🏠 Shows home (🏠) vs away (✈️) games
+- 📺 Shows broadcast channels when available
 - ⏰ 1-hour and 15-minute reminders
 - 🏆 Covers all competitions (Brasileirão, Copa do Brasil, Libertadores, Paulistão)
-- ✅ Supports future fixtures (no season restrictions!)
+
+## Data Source
+
+The app scrapes fixture data from [ptd.verdao.net](https://ptd.verdao.net), a community-maintained Palmeiras fixtures website. No API key required!
 
 ## Setup
 
 ### 1. Google Calendar Service Account
-
-**Note**: Sofascore API doesn't require an API key - it's free and open!
 
 1. Go to [Google Cloud Console](https://console.cloud.google.com/)
 2. Create a new project (or use existing)
@@ -63,17 +65,14 @@ The app is configured to deploy automatically to Quave Cloud via GitHub Actions.
 
 1. The app runs on Quave Cloud and syncs Palmeiras fixtures to your Google Calendar
 2. **Automatic Daily Sync**: Runs every day at 2 AM UTC (configurable via `CRON_SCHEDULE` env var)
-3. Fetches upcoming Palmeiras fixtures from Sofascore API (no API key required!)
+3. Scrapes upcoming Palmeiras fixtures from ptd.verdao.net
 4. Creates/updates events in your Google Calendar
 5. Each event includes:
    - Match title with home/away indicator
    - Tournament/competition name
    - Venue information
+   - Broadcast channels (when available)
    - Automatic reminders
-
-## Why Sofascore?
-
-The app was migrated from Football-Data.org because their free tier doesn't provide access to future fixtures. Sofascore API is free, doesn't require authentication, and provides comprehensive fixture data including future matches from all competitions (Brasileirão, Copa do Brasil, Libertadores, Paulistão, etc.)!
 
 ### Deployment
 
@@ -92,7 +91,7 @@ Once deployed, the app includes a web dashboard accessible at your app's URL:
 - **Trigger Sync**: Click the button to manually trigger a new sync
 - **Auto-refresh**: Status updates every 10 seconds
 
-The dashboard is available at the root URL of your deployed app (e.g., `https://your-app-url.zcloud.ws/`).
+The dashboard is available at the root URL of your deployed app (e.g., `https://palmeiras.filipenevola.com/`).
 
 ## Sync Scheduling
 
@@ -133,14 +132,14 @@ bun install
 # Set environment variables
 export GOOGLE_CREDENTIALS="base64-encoded-credentials"
 export GOOGLE_CALENDAR_ID="your-calendar-id"
-export SLACK_ERROR_WEBHOOK="https://hooks.slack.com/services/..."  # Optional: Slack webhook for error notifications
-export CRON_SCHEDULE="0 2 * * *"  # Optional: Custom cron schedule (default: 2 AM UTC daily)
+export SLACK_ERROR_WEBHOOK="https://hooks.slack.com/services/..."  # Optional
+export CRON_SCHEDULE="0 2 * * *"  # Optional (default: 2 AM UTC daily)
 
 # Start the web server (includes dashboard)
 bun run start
 
 # The server will be available at http://localhost:3000
-# You can also trigger syncs via the web UI or API:
+# API endpoints:
 # - GET /api/status - Get latest sync status
 # - POST /api/sync - Trigger a new sync
 # - GET /health - Health check endpoint
