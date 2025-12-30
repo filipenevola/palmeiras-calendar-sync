@@ -179,6 +179,9 @@ function parseBroadcast(tvText) {
     'Sportv': 'Sportv',
     'Premiere': 'Premiere',
     'Amazon Prime': 'Amazon Prime',
+    'Record': 'Record',
+    'Cazé': 'Cazé TV',
+    'HBO': 'HBO Max',
   };
   
   const channels = [];
@@ -192,18 +195,19 @@ function parseBroadcast(tvText) {
         channels.push(channelMap[part]);
       }
     } else {
+      // Only add if it matches a known channel (case-insensitive)
       const found = Object.entries(channelMap).find(([key, value]) => 
         part.toLowerCase().includes(value.toLowerCase()) || part.toLowerCase().includes(key.toLowerCase())
       );
       if (found) {
         channels.push(found[1]);
-      } else {
-        channels.push(part);
       }
+      // Don't add unknown values (like stadium names) - they are not broadcast channels
     }
   }
   
-  return channels.length > 0 ? channels.join(', ') : tvText;
+  // Only return channels if we found known broadcast channels
+  return channels.join(', ');
 }
 
 function parseMatchesFromHTML(html, competition, pageUrl) {
