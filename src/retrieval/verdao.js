@@ -240,9 +240,13 @@ function parseMatchesFromHTML(html, competition, pageUrl) {
       const matchDate = parseDateTime(dateTimeStr, competition);
       if (!matchDate) return;
       
+      // Check both location and tv fields for home stadiums (table structure may vary)
       const locationLower = location.toLowerCase();
+      const tvLower = tv.toLowerCase();
       const isHome = locationLower.includes('barueri') || 
-                     locationLower.includes('allianz');
+                     locationLower.includes('allianz') ||
+                     tvLower.includes('barueri') ||
+                     tvLower.includes('allianz');
       
       matches.push({
         date: matchDate,
@@ -282,9 +286,13 @@ function parseMatchesFromHTML(html, competition, pageUrl) {
             const broadcastMatch = text.match(/(Record|Cazé|TNT|HBO|Globo|Sportv|Premiere|Amazon)/g);
             const broadcast = broadcastMatch ? broadcastMatch.join(', ') : '';
             
+            // Check all text for home stadiums
             const locationLower = location.toLowerCase();
+            const textLower = text.toLowerCase();
             const isHome = locationLower.includes('barueri') || 
-                           locationLower.includes('allianz');
+                           locationLower.includes('allianz') ||
+                           textLower.includes('barueri') ||
+                           textLower.includes('allianz');
             
             matches.push({
               date: matchDate,
