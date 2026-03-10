@@ -147,6 +147,25 @@ export async function getCalendarClient() {
   }
 }
 
+/**
+ * Builds a fallback key from calendar event summary + start date.
+ * Extracts opponent from "🏠 Palmeiras vs {opponent}" or "✈️ Palmeiras vs {opponent}"
+ * and combines with date (YYYY-MM-DD) to match events created with old key formats.
+ */
+function buildFallbackKey(event) {
+  const normalize = (str) => str.toLowerCase().trim().replace(/\s+/g, '_').replace(/[^a-z0-9_]/g, '');
+  const summary = event.summary || '';
+  const opponentMatch = summary.match(/Palmeiras\s+vs\s+(.+?)(?:\s*📺|$)/);
+  if (!opponentMatch) return null;
+
+  const opponent = normalize(opponentMatch[1]);
+  const startDate = event.start?.dateTime || event.start?.date;
+  if (!startDate) return null;
+
+  const dateStr = new Date(startDate).toISOString().slice(0, 10);
+  return `palmeiras_vs_${opponent}_${dateStr}`;
+}
+
 export async function getExistingEvents(calendar) {
   try {
     const now = new Date();
@@ -168,9 +187,16 @@ export async function getExistingEvents(calendar) {
       if (fixtureId) {
         fixtureMap.set(fixtureId, event.id);
       }
+
+      // Fallback: also index by opponent+date extracted from summary
+      // so events created with old key format are still found
+      const fallbackKey = buildFallbackKey(event);
+      if (fallbackKey && !fixtureMap.has(fallbackKey)) {
+        fixtureMap.set(fallbackKey, event.id);
+      }
     }
     
-    logger.info(`[CALENDAR] Found ${fixtureMap.size} existing Palmeiras events in calendar`);
+    logger.info(`[CALENDAR] Found ${palmeirasEvents.length} existing Palmeiras events in calendar`);
     return fixtureMap;
   } catch (err) {
     const error = ensureError(err);

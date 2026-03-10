@@ -8,19 +8,18 @@
 import { logger } from './logger.js';
 
 /**
- * Generates a unique key for a match based on teams and competition
- * This key is stable even when date/time changes, preventing duplicates
+ * Generates a unique key for a match based on teams and date (day only).
+ * Uses opponent + date so the same match scraped from different pages
+ * (e.g., competition page and homepage) produces the same key.
  * @param {Match} match - Match object
  * @returns {string} Unique key for the match
  */
 export function getMatchUniqueKey(match) {
-  // Normalize team names and competition for consistent keys
   const normalize = (str) => str.toLowerCase().trim().replace(/\s+/g, '_').replace(/[^a-z0-9_]/g, '');
   const opponent = normalize(match.opponent);
-  const competition = normalize(match.competition);
+  const dateStr = match.date.toISOString().slice(0, 10); // YYYY-MM-DD
   
-  // Key format: palmeiras_vs_{opponent}_{competition}
-  return `palmeiras_vs_${opponent}_${competition}`;
+  return `palmeiras_vs_${opponent}_${dateStr}`;
 }
 
 /**
@@ -34,8 +33,8 @@ export function processMatches(matches) {
   // Filter for future matches only
   const futureMatches = matches.filter(match => match.date > now);
   
-  // Remove duplicates using unique key (teams + competition)
-  // If same teams+competition appears multiple times, keep the one with the earliest date
+  // Remove duplicates using unique key (opponent + date)
+  // If same opponent+date appears multiple times, keep the first occurrence
   const matchMap = new Map();
   
   for (const match of futureMatches) {
