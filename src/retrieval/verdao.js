@@ -45,11 +45,16 @@ const VERDAO_HEADERS = {
  * @param {number} retries - Number of retry attempts
  * @returns {Promise<string|null>} - HTML content or null if page not found
  */
+const FETCH_TIMEOUT_MS = 30_000;
+
 async function fetchHTML(url, retries = 3) {
   for (let i = 0; i < retries; i++) {
     try {
       logger.debug(`[RETRIEVAL] Fetching HTML: ${url} (attempt ${i + 1}/${retries})`);
-      const response = await fetch(url, { headers: VERDAO_HEADERS });
+      const response = await fetch(url, {
+        headers: VERDAO_HEADERS,
+        signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
+      });
       
       if (response.ok) {
         const html = await response.text();
@@ -57,27 +62,24 @@ async function fetchHTML(url, retries = 3) {
         return html;
       }
       
-      // Handle 404 and other client errors (page not published yet)
       if (response.status === 404 || response.status === 410) {
         logger.info(`[RETRIEVAL] Page not found (${response.status}): ${url} - likely not published yet`);
         return null;
       }
       
-      logger.warn(`[RETRIEVAL] HTTP ${response.status} - ${response.statusText}`);
+      logger.info(`[RETRIEVAL] Attempt ${i + 1}/${retries} HTTP ${response.status} for ${url}`);
     } catch (error) {
-      logger.warn(`[RETRIEVAL] Attempt ${i + 1} failed: ${error.message}`);
+      logger.info(`[RETRIEVAL] Attempt ${i + 1}/${retries} failed for ${url}: ${error.message}`);
     }
     
     if (i < retries - 1) {
-      const delay = 1000 * (i + 1);
+      const delay = 2000 * (i + 1);
       logger.debug(`[RETRIEVAL] Waiting ${delay}ms before retry...`);
       await new Promise(r => setTimeout(r, delay));
     }
   }
   
-  // If we exhausted retries, check if it's a network error vs 404
-  // For now, we'll throw an error for non-404 cases
-  throw new Error(`Failed to fetch HTML after ${retries} attempts`);
+  throw new Error(`Failed to fetch ${url} after ${retries} attempts`);
 }
 
 /**
@@ -354,8 +356,7 @@ export async function fetchPalmeirasFixtures() {
         
         await new Promise(r => setTimeout(r, 500));
       } catch (err) {
-        logger.warn(`[RETRIEVAL] Failed to fetch ${page.competition}:`, err.message);
-        // Continue with other pages even if one fails
+        logger.error(`[RETRIEVAL] All retries exhausted for ${page.competition}`, ensureError(err));
       }
     }
     
