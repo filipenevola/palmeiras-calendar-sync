@@ -16,7 +16,7 @@ const VERDAO_BASE_URL = 'https://ptd.verdao.net';
  * If we're past December 20th, use next year instead
  * @returns {Array<{url: string, competition: string}>}
  */
-function getVerdaoPages() {
+export function getVerdaoPages() {
   const now = new Date();
   const currentYear = now.getFullYear();
   // If we're past December 20th, use next year for URLs
@@ -31,34 +31,43 @@ function getVerdaoPages() {
 }
 
 const VERDAO_HEADERS = {
-  'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-  'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+  'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36',
+  'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8',
   'Accept-Language': 'pt-BR,pt;q=0.9,en-US;q=0.8,en;q=0.7',
-  'Referer': 'https://ptd.verdao.net/',
-  'Cache-Control': 'no-cache'
+  'Accept-Encoding': 'gzip, deflate, br',
+  'Connection': 'keep-alive',
+  'Referer': 'https://www.google.com/',
+  'Cache-Control': 'no-cache',
+  'Sec-Fetch-Dest': 'document',
+  'Sec-Fetch-Mode': 'navigate',
+  'Sec-Fetch-Site': 'cross-site',
+  'Upgrade-Insecure-Requests': '1',
 };
 
 /**
  * Fetches HTML from a URL with retry logic
- * Returns null if the page is not found (404) or not published yet
+ * Returns null if the page is not found (404), not published yet, or unreachable after retries.
  * @param {string} url - URL to fetch
  * @param {number} retries - Number of retry attempts
- * @returns {Promise<string|null>} - HTML content or null if page not found
+ * @returns {Promise<string|null>} - HTML content or null
  */
-const FETCH_TIMEOUT_MS = 30_000;
+const FETCH_TIMEOUT_MS = 60_000;
 
-async function fetchHTML(url, retries = 3) {
+export async function fetchHTML(url, retries = 4) {
+  const attemptErrors = [];
+
   for (let i = 0; i < retries; i++) {
     try {
-      logger.debug(`[RETRIEVAL] Fetching HTML: ${url} (attempt ${i + 1}/${retries})`);
+      logger.info(`[RETRIEVAL] Fetching HTML: ${url} (attempt ${i + 1}/${retries})`);
       const response = await fetch(url, {
         headers: VERDAO_HEADERS,
+        redirect: 'follow',
         signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
       });
       
       if (response.ok) {
         const html = await response.text();
-        logger.debug(`[RETRIEVAL] Success! Got ${html.length} bytes`);
+        logger.info(`[RETRIEVAL] Success: ${url} - ${html.length} bytes`);
         return html;
       }
       
@@ -67,19 +76,24 @@ async function fetchHTML(url, retries = 3) {
         return null;
       }
       
-      logger.info(`[RETRIEVAL] Attempt ${i + 1}/${retries} HTTP ${response.status} for ${url}`);
+      const detail = `HTTP ${response.status} (${response.statusText})`;
+      attemptErrors.push(detail);
+      logger.warn(`[RETRIEVAL] Attempt ${i + 1}/${retries} ${detail} for ${url}`);
     } catch (error) {
-      logger.info(`[RETRIEVAL] Attempt ${i + 1}/${retries} failed for ${url}: ${error.message}`);
+      const detail = `${error.name}: ${error.message}`;
+      attemptErrors.push(detail);
+      logger.warn(`[RETRIEVAL] Attempt ${i + 1}/${retries} failed for ${url}: ${detail}`);
     }
     
     if (i < retries - 1) {
-      const delay = 2000 * (i + 1);
-      logger.debug(`[RETRIEVAL] Waiting ${delay}ms before retry...`);
+      const delay = 3000 * (i + 1);
+      logger.info(`[RETRIEVAL] Waiting ${delay}ms before retry...`);
       await new Promise(r => setTimeout(r, delay));
     }
   }
   
-  throw new Error(`Failed to fetch ${url} after ${retries} attempts`);
+  logger.warn(`[RETRIEVAL] All ${retries} attempts failed for ${url}. Errors: ${attemptErrors.join(' | ')}`);
+  return null;
 }
 
 /**
@@ -212,116 +226,143 @@ function parseBroadcast(tvText) {
   return channels.join(', ');
 }
 
-function parseMatchesFromHTML(html, competition, pageUrl) {
+function parseCompetitionTable(html, competition, pageUrl) {
   const $ = cheerio.load(html);
   const matches = [];
-  
-  $('table').each((idx, table) => {
+
+  $('table').each((_idx, table) => {
     const $table = $(table);
     const tableText = $table.text().toLowerCase();
-    
+
     if (!tableText.includes('data') && !tableText.includes('horário') && !tableText.includes('adversário')) {
       return;
     }
-    
-    $table.find('tr').each((rowIdx, row) => {
-      const $row = $(row);
-      const cells = $row.find('td').map((i, cell) => $(cell).text().trim()).get();
-      
-      if (cells.length < 3) return;
-      
+
+    const rows = $table.find('tr').toArray();
+    // Detect column layout from header row
+    const headerCells = $(rows[0]).find('td, th').map((_i, c) => $(c).text().trim().toLowerCase()).get();
+    const hasScoreColumn = headerCells.some(h => h === 'x' || h === 'placar');
+    const colOffset = hasScoreColumn ? 1 : 0; // skip score column if present
+
+    for (let ri = 1; ri < rows.length; ri++) {
+      const cells = $(rows[ri]).find('td').map((_i, cell) => $(cell).text().trim()).get();
+      if (cells.length < 3) continue;
+
       const dateTimeStr = cells[0];
       const opponent = cells[1];
-      const location = cells[2] || '';
-      const tv = cells[3] || '';
-      
-      if (dateTimeStr.toLowerCase().includes('data') || 
-          dateTimeStr.toLowerCase().includes('horário') ||
+      const location = cells[2 + colOffset] || '';
+      const tv = cells[3 + colOffset] || '';
+
+      if (!dateTimeStr.match(/\d/) ||
           opponent.toLowerCase().includes('adversário') ||
-          opponent === 'x' || opponent === '' ||
-          dateTimeStr === '' || !dateTimeStr.match(/\d/)) {
-        return;
+          opponent === 'x' || opponent === '') {
+        continue;
       }
-      
+
       const matchDate = parseDateTime(dateTimeStr, competition);
-      if (!matchDate) return;
-      
-      // Check both location and tv fields for home stadiums (table structure may vary)
+      if (!matchDate) continue;
+
       const locationLower = location.toLowerCase();
-      const tvLower = tv.toLowerCase();
-      const isHome = locationLower.includes('barueri') || 
-                     locationLower.includes('allianz') ||
-                     tvLower.includes('barueri') ||
-                     tvLower.includes('allianz');
-      
-      // Clean opponent: remove leading/trailing "x" from "Palmeiras x Opponent" format
+      const isHome = locationLower.includes('barueri') || locationLower.includes('allianz');
       const cleanOpponent = opponent.trim().replace(/^x\s+/i, '').replace(/\s+x$/i, '').trim();
-      
+
       matches.push({
         date: matchDate,
         opponent: cleanOpponent,
         location: location.trim(),
         broadcast: parseBroadcast(tv),
-        competition: competition,
-        isHome: isHome,
-        source: pageUrl
+        competition,
+        isHome,
+        source: pageUrl,
+      });
+    }
+  });
+
+  return matches;
+}
+
+function parseHomePage(html, _fallbackCompetition, pageUrl) {
+  const $ = cheerio.load(html);
+  const matches = [];
+
+  // Find the specific table that has "PRÓXIMOS JOGOS" in a header cell
+  $('table').each((_idx, table) => {
+    const $table = $(table);
+    const headerRow = $table.find('tr').first();
+    if (!headerRow.text().includes('PRÓXIMOS JOGOS')) return;
+
+    $table.find('tr').each((_ri, row) => {
+      const $row = $(row);
+      const tds = $row.find('td');
+      if (tds.length < 3) return;
+
+      // Middle cell HTML: "18/03 | 19h00 | <a>Brasileirão</a><br>Allianz Parque | Sportv"
+      const middleTd = tds.eq(1);
+      // Replace <br> with \n so we can split properly
+      const middleHtml = middleTd.html() || '';
+      const middleText = middleHtml.replace(/<br\s*\/?>/gi, '\n').replace(/<[^>]+>/g, '').trim();
+
+      const dateMatch = middleText.match(/(\d{1,2})\/(\d{1,2})\s*\|\s*(\d{1,2})h(\d{2})/);
+      if (!dateMatch) return;
+
+      const [, day, month, hour, minute] = dateMatch;
+      const dateTimeStr = `${day}/${month} – ${hour}h${minute}`;
+
+      // Extract competition from <a> tag
+      const competitionLink = middleTd.find('a').first();
+      const competition = competitionLink.text().trim() || 'Brasileirão';
+      const yearSuffix = new Date().getFullYear();
+
+      const matchDate = parseDateTime(dateTimeStr, `${competition} ${yearSuffix}`);
+      if (!matchDate) return;
+
+      // Get team images: [left team, right team]
+      const imgs = $row.find('img[alt]').map((_i, img) => $(img).attr('alt')).get();
+      const leftTeam = imgs[0] || '';
+      const rightTeam = imgs[imgs.length - 1] || '';
+
+      const isPalmeirasLeft = leftTeam === 'Palmeiras';
+      const opponent = isPalmeirasLeft ? rightTeam : leftTeam;
+      if (!opponent || opponent === 'Palmeiras') return;
+
+      // Parse venue and broadcast from the last line (after competition name)
+      // Lines: ["18/03 | 19h00 |", "Brasileirão", "Allianz Parque | Sportv"]
+      const lines = middleText.split('\n').map(l => l.trim()).filter(Boolean);
+      let location = '';
+      let broadcast = '';
+      const venueLine = lines.find(l => !l.match(/\d{1,2}\/\d{1,2}/) && l.includes('|'));
+      if (venueLine) {
+        const infoParts = venueLine.split('|').map(p => p.trim());
+        location = infoParts[0] || '';
+        broadcast = infoParts.slice(1).join(', ');
+      }
+
+      const locationLower = location.toLowerCase();
+      const isHome = isPalmeirasLeft ||
+                     locationLower.includes('barueri') ||
+                     locationLower.includes('allianz');
+
+      matches.push({
+        date: matchDate,
+        opponent: opponent.trim(),
+        location: location.trim(),
+        broadcast: parseBroadcast(broadcast),
+        competition: `${competition} ${yearSuffix}`,
+        isHome,
+        source: pageUrl,
       });
     });
   });
-  
-  // Also check for "PRÓXIMOS JOGOS" section on home page
-  if (pageUrl.includes('verdao.net/') && !pageUrl.includes('/brasileirao') && 
-      !pageUrl.includes('/paulista') && !pageUrl.includes('/copa') && !pageUrl.includes('/libertadores')) {
-    $('*:contains("PRÓXIMOS JOGOS")').each((idx, elem) => {
-      const $section = $(elem).closest('section, div, table');
-      $section.find('tr, div').each((rowIdx, row) => {
-        const $row = $(row);
-        const text = $row.text();
-        
-        const dateMatch = text.match(/(\d{1,2})\/(\d{1,2})\s*[|]\s*(\d{1,2})h(\d{2})/);
-        if (dateMatch) {
-          const [, day, month, hour, minute] = dateMatch;
-          const dateTimeStr = `${day}/${month} – ${hour}h${minute}`;
-          const matchDate = parseDateTime(dateTimeStr, competition);
-          
-          if (!matchDate) return;
-          
-          const opponentImg = $row.find('img[alt]').last();
-          const opponent = opponentImg.attr('alt') || '';
-          
-          if (opponent && opponent !== 'Palmeiras' && opponent.trim() !== '') {
-            const locationMatch = text.match(/\[([^\]]+)\]/);
-            const location = locationMatch ? locationMatch[1] : '';
-            const broadcastMatch = text.match(/(Record|Cazé|TNT|HBO|Globo|Sportv|Premiere|Amazon)/g);
-            const broadcast = broadcastMatch ? broadcastMatch.join(', ') : '';
-            
-            // Check all text for home stadiums
-            const locationLower = location.toLowerCase();
-            const textLower = text.toLowerCase();
-            const isHome = locationLower.includes('barueri') || 
-                           locationLower.includes('allianz') ||
-                           textLower.includes('barueri') ||
-                           textLower.includes('allianz');
-            
-            // Clean opponent: remove leading/trailing "x" from "Palmeiras x Opponent" format
-            const cleanOpponent = opponent.trim().replace(/^x\s+/i, '').replace(/\s+x$/i, '').trim();
-            
-            matches.push({
-              date: matchDate,
-              opponent: cleanOpponent,
-              location: location.trim(),
-              broadcast: parseBroadcast(broadcast),
-              competition: competition,
-              isHome: isHome,
-              source: pageUrl
-            });
-          }
-        }
-      });
-    });
-  }
-  
+
   return matches;
+}
+
+function parseMatchesFromHTML(html, competition, pageUrl) {
+  const isHomePage = pageUrl.endsWith('verdao.net/') || pageUrl.endsWith('verdao.net');
+  if (isHomePage) {
+    return parseHomePage(html, competition, pageUrl);
+  }
+  return parseCompetitionTable(html, competition, pageUrl);
 }
 
 /**
@@ -343,9 +384,8 @@ export async function fetchPalmeirasFixtures() {
         logger.info(`[RETRIEVAL] Fetching ${page.competition} from ${page.url}...`);
         const html = await fetchHTML(page.url);
         
-        // If HTML is null, the page doesn't exist yet (404 or not published)
         if (html === null) {
-          logger.info(`[RETRIEVAL] Skipping ${page.competition} - page not available yet`);
+          logger.info(`[RETRIEVAL] Skipping ${page.competition} - page not available or unreachable`);
           continue;
         }
         
@@ -354,9 +394,9 @@ export async function fetchPalmeirasFixtures() {
         logger.info(`[RETRIEVAL] Found ${matches.length} matches from ${page.competition}`);
         allMatches.push(...matches);
         
-        await new Promise(r => setTimeout(r, 500));
+        await new Promise(r => setTimeout(r, 1000));
       } catch (err) {
-        logger.error(`[RETRIEVAL] All retries exhausted for ${page.competition}`, ensureError(err));
+        logger.warn(`[RETRIEVAL] Error processing ${page.competition}: ${err.message}`);
       }
     }
     

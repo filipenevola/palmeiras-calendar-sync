@@ -1,6 +1,7 @@
 import { logger, ensureError } from './logger.js';
 import { sync } from './sync.js';
 import { getLatestRunStatus } from './storage.js';
+import { fetchHTML, getVerdaoPages } from './retrieval/verdao.js';
 
 const PORT = process.env.PORT || 3000;
 
@@ -467,6 +468,67 @@ export function createServer() {
         }
       }
       
+      // API: Test fetch a URL (diagnostic)
+      if (url.pathname === '/api/test-fetch' && req.method === 'GET') {
+        const testUrl = url.searchParams.get('url') || 'https://ptd.verdao.net/';
+        const start = Date.now();
+        try {
+          const html = await fetchHTML(testUrl, 1);
+          return Response.json({
+            url: testUrl,
+            success: html !== null,
+            length: html?.length || 0,
+            preview: html?.substring(0, 500) || null,
+            durationMs: Date.now() - start,
+          });
+        } catch (err) {
+          return Response.json({
+            url: testUrl,
+            success: false,
+            error: err.message,
+            durationMs: Date.now() - start,
+          });
+        }
+      }
+
+      // API: Test all verdao pages (diagnostic)
+      if (url.pathname === '/api/test-pages' && req.method === 'GET') {
+        const pages = getVerdaoPages();
+        const results = [];
+        for (const page of pages) {
+          const start = Date.now();
+          try {
+            const html = await fetchHTML(page.url, 1);
+            results.push({
+              competition: page.competition,
+              url: page.url,
+              success: html !== null,
+              length: html?.length || 0,
+              durationMs: Date.now() - start,
+            });
+          } catch (err) {
+            results.push({
+              competition: page.competition,
+              url: page.url,
+              success: false,
+              error: err.message,
+              durationMs: Date.now() - start,
+            });
+          }
+        }
+        return Response.json({ pages: results });
+      }
+
+      // API: Force sync (GET for easy browser/curl testing)
+      if (url.pathname === '/api/force-sync' && req.method === 'GET') {
+        try {
+          const result = await sync();
+          return Response.json({ status: 'completed', result });
+        } catch (err) {
+          return Response.json({ status: 'error', error: err.message }, { status: 500 });
+        }
+      }
+
       // Health check
       if (url.pathname === '/health' || url.pathname === '/') {
         return Response.json({ status: 'ok', service: 'palmeiras-calendar-sync' });
