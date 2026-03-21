@@ -21,24 +21,36 @@ if (process.env.SLACK_ERROR_WEBHOOK && !isSlackEnabled) {
   console.warn('[LOGGER] SLACK_ERROR_WEBHOOK not set - Slack notifications disabled');
 }
 
-export const logger = createLogger({
+const CURSOR_TAG = `@Cursor repo=filipenevola/palmeiras-calendar-sync, branch=main
+
+Use the Quave ONE MCP to investigate logs and deployment status. Quave ONE IDs: accountId=KPADFfTBDQnk8J2Yv, appId=z5NAMzhWJikLpSZrf, appEnvId=zNp7QCSEWZQX4jzWB.
+
+Investigate and fix this error.`;
+
+const _logger = createLogger({
   appName: 'palmeiras-calendar-sync',
   environment: process.env.NODE_ENV || 'production',
   debug: {
     enabled: true,
-    filter: ['SYNC'], // Enable debug logs for SYNC-related messages
+    filter: ['SYNC'],
   },
   slack: {
     enabled: isSlackEnabled,
     webhookUrl: isSlackEnabled ? slackWebhookUrl : undefined,
     webhookUrls: isSlackEnabled ? {
-      error: slackWebhookUrl, // Override for errors specifically
+      error: slackWebhookUrl,
     } : undefined,
-    skipInDevelopment: false, // Changed to false to test in any environment
-
-
+    skipInDevelopment: false,
   },
 });
+
+const originalError = _logger.error.bind(_logger);
+_logger.error = (message, ...args) => {
+  const messageWithCursor = `${message}\n\n${CURSOR_TAG}`;
+  originalError(messageWithCursor, ...args);
+};
+
+export const logger = _logger;
 
 // Helper to ensure errors are always Error objects for proper Slack formatting
 export function ensureError(error) {
