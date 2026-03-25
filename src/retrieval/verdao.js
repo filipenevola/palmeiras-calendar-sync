@@ -156,6 +156,11 @@ function createDateInSaoPaulo(year, month, day, hour, minute) {
 }
 
 function parseDateTime(dateTimeStr, competition) {
+  if (/A\s*\/\s*D/i.test(dateTimeStr)) {
+    logger.info(`[RETRIEVAL] Skipping match with undefined date/time (A/D): ${dateTimeStr}`);
+    return null;
+  }
+
   const match = dateTimeStr.match(/(\d{1,2})\/(\d{1,2})\s*[–-]\s*(\d{1,2})h(\d{2})/);
   if (!match) {
     logger.warn(`[RETRIEVAL] Could not parse date-time: ${dateTimeStr}`);

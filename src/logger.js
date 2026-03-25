@@ -44,11 +44,14 @@ const _logger = createLogger({
   },
 });
 
-const originalError = _logger.error.bind(_logger);
-_logger.error = (message, ...args) => {
-  const messageWithCursor = `${message}\n\n${CURSOR_TAG}`;
-  originalError(messageWithCursor, ...args);
-};
+function withCursorTag(originalFn) {
+  return (message, ...args) => {
+    originalFn(`${message}\n\n${CURSOR_TAG}`, ...args);
+  };
+}
+
+_logger.error = withCursorTag(_logger.error.bind(_logger));
+_logger.warn = withCursorTag(_logger.warn.bind(_logger));
 
 export const logger = _logger;
 
