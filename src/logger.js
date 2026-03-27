@@ -21,7 +21,7 @@ if (process.env.SLACK_ERROR_WEBHOOK && !isSlackEnabled) {
   console.warn('[LOGGER] SLACK_ERROR_WEBHOOK not set - Slack notifications disabled');
 }
 
-const CURSOR_TAG = `@Cursor repo=filipenevola/palmeiras-calendar-sync, branch=main
+const CURSOR_TAG = `<@U0A52LNRDK3> repo=filipenevola/palmeiras-calendar-sync, branch=main
 
 Use the Quave ONE MCP to investigate logs and deployment status. Quave ONE IDs: accountId=KPADFfTBDQnk8J2Yv, appId=z5NAMzhWJikLpSZrf, appEnvId=zNp7QCSEWZQX4jzWB.
 
