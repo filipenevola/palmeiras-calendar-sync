@@ -57,7 +57,8 @@ export function processMatches(matches) {
   uniqueMatches.slice(0, 5).forEach((match, idx) => {
     const diff = match.date.getTime() - now.getTime();
     const diffDays = Math.floor(diff / (1000 * 60 * 60 * 24));
-    logger.info(`[PROCESSING] Match ${idx + 1}: ${match.isHome ? '🏠' : '✈️'} vs ${match.opponent} - ${match.competition} - Date: ${match.date.toISOString()}, diff: ${diffDays} days${match.broadcast ? ` - TV: ${match.broadcast}` : ''}`);
+    const teams = match.isHome ? `Palmeiras vs ${match.opponent}` : `${match.opponent} vs Palmeiras`;
+    logger.info(`[PROCESSING] Match ${idx + 1}: ${match.isHome ? '🏠' : '✈️'} ${teams} - ${match.competition} - Date: ${match.date.toISOString()}, diff: ${diffDays} days${match.broadcast ? ` - TV: ${match.broadcast}` : ''}`);
   });
   
   return uniqueMatches;

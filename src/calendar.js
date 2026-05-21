@@ -11,19 +11,32 @@ import { GOOGLE_CREDENTIALS, GOOGLE_CALENDAR_ID } from './config.js';
 import { getMatchUniqueKey } from './processing.js';
 
 /**
+ * Event title: home team first, away team second, with venue indicator.
+ * @param {Match} match
+ * @returns {string}
+ */
+export function formatMatchSummary(match) {
+  const venue = match.isHome ? '🏠' : '✈️';
+  const teams = match.isHome
+    ? `Palmeiras vs ${match.opponent}`
+    : `${match.opponent} vs Palmeiras`;
+
+  let summary = `${venue} ${teams}`;
+  if (match.broadcast) {
+    summary += ` 📺 ${match.broadcast}`;
+  }
+  return summary;
+}
+
+/**
  * Converts a Match to a Google Calendar event
  * @param {Match} match - Match in standardized format
  * @returns {Object} Google Calendar event resource
  */
 export function matchToCalendarEvent(match) {
-  const venue = match.isHome ? '🏠' : '✈️';
   const startDateTime = match.date;
   const endDateTime = new Date(startDateTime.getTime() + 2 * 60 * 60 * 1000); // 2 hours
-  
-  let summary = `${venue} Palmeiras vs ${match.opponent}`;
-  if (match.broadcast) {
-    summary += ` 📺 ${match.broadcast}`;
-  }
+  const summary = formatMatchSummary(match);
   
   // Generate unique key based on teams and competition (not date/time)
   const uniqueKey = getMatchUniqueKey(match);
@@ -149,16 +162,19 @@ export async function getCalendarClient() {
 
 /**
  * Builds a fallback key from calendar event summary + start date.
- * Extracts opponent from "🏠 Palmeiras vs {opponent}" or "✈️ Palmeiras vs {opponent}"
- * and combines with date (YYYY-MM-DD) to match events created with old key formats.
+ * Supports home-first titles and the legacy "Palmeiras vs {opponent}" away format.
  */
 function buildFallbackKey(event) {
   const normalize = (str) => str.toLowerCase().trim().replace(/\s+/g, '_').replace(/[^a-z0-9_]/g, '');
-  const summary = event.summary || '';
-  const opponentMatch = summary.match(/Palmeiras\s+vs\s+(.+?)(?:\s*📺|$)/);
-  if (!opponentMatch) return null;
+  const summary = (event.summary || '').replace(/^[🏠✈️]\s*/, '').trim();
 
-  const opponent = normalize(opponentMatch[1]);
+  const homeFirstMatch = summary.match(/^Palmeiras\s+vs\s+(.+?)(?:\s*📺|$)/);
+  const awayFirstMatch = summary.match(/^(.+?)\s+vs\s+Palmeiras(?:\s*📺|$)/);
+
+  const opponentRaw = homeFirstMatch?.[1] ?? awayFirstMatch?.[1];
+  if (!opponentRaw) return null;
+
+  const opponent = normalize(opponentRaw);
   const startDate = event.start?.dateTime || event.start?.date;
   if (!startDate) return null;
 
