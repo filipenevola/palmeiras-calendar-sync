@@ -7,8 +7,12 @@
 
 import { logger } from './logger.js';
 
+/** Verdão in-joke: "Sistema" placeholder means Flamengo */
+const OPPONENT_ALIASES = {
+  sistema: 'Flamengo',
+};
+
 const PLACEHOLDER_OPPONENTS = new Set([
-  'sistema',
   'a_definir',
   'adversario',
   'tbd',
@@ -40,6 +44,19 @@ export function getMatchDayKey(match) {
  */
 export function getMatchUniqueKey(match) {
   return `palmeiras_${getMatchDayKey(match)}`;
+}
+
+/**
+ * @param {string} opponent
+ * @returns {string}
+ */
+export function normalizeOpponentName(opponent) {
+  const key = opponent
+    .toLowerCase()
+    .trim()
+    .replace(/\s+/g, '_')
+    .replace(/[^a-z0-9_]/g, '');
+  return OPPONENT_ALIASES[key] ?? opponent.trim();
 }
 
 /**
@@ -93,7 +110,12 @@ function pickBetterMatch(existing, candidate) {
 export function processMatches(matches) {
   const now = new Date();
 
-  const futureMatches = matches.filter(
+  const normalizedMatches = matches.map((match) => ({
+    ...match,
+    opponent: normalizeOpponentName(match.opponent),
+  }));
+
+  const futureMatches = normalizedMatches.filter(
     (match) => match.date > now && !isPlaceholderOpponent(match.opponent)
   );
 

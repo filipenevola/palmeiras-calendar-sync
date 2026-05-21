@@ -7,6 +7,7 @@
  */
 
 import { logger, ensureError } from '../logger.js';
+import { normalizeOpponentName } from '../processing.js';
 import * as cheerio from 'cheerio';
 
 const VERDAO_BASE_URL = 'https://ptd.verdao.net';
@@ -272,7 +273,9 @@ function parseCompetitionTable(html, competition, pageUrl) {
         locationLower.includes('barueri') ||
         locationLower.includes('allianz') ||
         locationLower.includes('nubank');
-      const cleanOpponent = opponent.trim().replace(/^x\s+/i, '').replace(/\s+x$/i, '').trim();
+      const cleanOpponent = normalizeOpponentName(
+        opponent.trim().replace(/^x\s+/i, '').replace(/\s+x$/i, '').trim()
+      );
 
       matches.push({
         date: matchDate,
@@ -354,7 +357,7 @@ function parseHomePage(html, _fallbackCompetition, pageUrl) {
 
       matches.push({
         date: matchDate,
-        opponent: opponent.trim(),
+        opponent: normalizeOpponentName(opponent.trim()),
         location: location.trim(),
         broadcast: parseBroadcast(broadcast),
         competition: `${competition} ${yearSuffix}`,
