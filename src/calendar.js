@@ -8,7 +8,7 @@
 import { google } from 'googleapis';
 import { logger, ensureError } from './logger.js';
 import { GOOGLE_CREDENTIALS, GOOGLE_CALENDAR_ID } from './config.js';
-import { getMatchUniqueKey } from './processing.js';
+import { getMatchUniqueKey, toSaoPauloDateKey } from './processing.js';
 
 /**
  * Event title: home team first, away team second, with venue indicator.
@@ -178,8 +178,14 @@ function buildFallbackKey(event) {
   const startDate = event.start?.dateTime || event.start?.date;
   if (!startDate) return null;
 
-  const dateStr = new Date(startDate).toISOString().slice(0, 10);
+  const dateStr = toSaoPauloDateKey(new Date(startDate));
   return `palmeiras_vs_${opponent}_${dateStr}`;
+}
+
+function getEventDayKey(event) {
+  const startDate = event.start?.dateTime || event.start?.date;
+  if (!startDate) return null;
+  return `palmeiras_${toSaoPauloDateKey(new Date(startDate))}`;
 }
 
 export async function getExistingEvents(calendar) {
@@ -198,14 +204,21 @@ export async function getExistingEvents(calendar) {
     );
     
     const fixtureMap = new Map();
+    const dayToEventIds = new Map();
+
     for (const event of palmeirasEvents) {
+      const dayKey = getEventDayKey(event);
+      if (dayKey) {
+        if (!dayToEventIds.has(dayKey)) dayToEventIds.set(dayKey, []);
+        dayToEventIds.get(dayKey).push(event.id);
+        if (!fixtureMap.has(dayKey)) fixtureMap.set(dayKey, event.id);
+      }
+
       const fixtureId = event.extendedProperties?.private?.fixtureId;
-      if (fixtureId) {
+      if (fixtureId && !fixtureMap.has(fixtureId)) {
         fixtureMap.set(fixtureId, event.id);
       }
 
-      // Fallback: also index by opponent+date extracted from summary
-      // so events created with old key format are still found
       const fallbackKey = buildFallbackKey(event);
       if (fallbackKey && !fixtureMap.has(fallbackKey)) {
         fixtureMap.set(fallbackKey, event.id);
@@ -213,7 +226,7 @@ export async function getExistingEvents(calendar) {
     }
     
     logger.info(`[CALENDAR] Found ${palmeirasEvents.length} existing Palmeiras events in calendar`);
-    return fixtureMap;
+    return { fixtureMap, dayToEventIds };
   } catch (err) {
     const error = ensureError(err);
     logger.error('[CALENDAR] Failed to fetch existing events', error);
@@ -230,19 +243,22 @@ export async function syncMatchesToCalendar(matches) {
   logger.info('[CALENDAR] Starting calendar sync...');
   
   const calendar = await getCalendarClient();
-  const existingEvents = await getExistingEvents(calendar);
+  const { fixtureMap, dayToEventIds } = await getExistingEvents(calendar);
   
   let created = 0;
   let updated = 0;
+  let deleted = 0;
   let skipped = 0;
   const errors = [];
   
   for (const match of matches) {
     const event = matchToCalendarEvent(match);
     const fixtureId = event.extendedProperties.private.fixtureId;
-    const existingEventId = existingEvents.get(fixtureId);
+    const existingEventId = fixtureMap.get(fixtureId);
     
     try {
+      let keptEventId = existingEventId;
+
       if (existingEventId) {
         await calendar.events.update({
           calendarId: GOOGLE_CALENDAR_ID,
@@ -252,13 +268,26 @@ export async function syncMatchesToCalendar(matches) {
         logger.info(`[CALENDAR] Updated: ${event.summary}`);
         updated++;
       } else {
-        await calendar.events.insert({
+        const response = await calendar.events.insert({
           calendarId: GOOGLE_CALENDAR_ID,
           resource: event,
         });
+        keptEventId = response.data.id;
         logger.info(`[CALENDAR] Created: ${event.summary}`);
         created++;
       }
+
+      const duplicateIds = (dayToEventIds.get(fixtureId) || []).filter((id) => id !== keptEventId);
+      for (const duplicateId of duplicateIds) {
+        await calendar.events.delete({
+          calendarId: GOOGLE_CALENDAR_ID,
+          eventId: duplicateId,
+        });
+        logger.info(`[CALENDAR] Deleted duplicate for ${fixtureId}: ${duplicateId}`);
+        deleted++;
+      }
+      dayToEventIds.set(fixtureId, [keptEventId]);
+      fixtureMap.set(fixtureId, keptEventId);
     } catch (err) {
       const error = ensureError(err);
       error.fixture = event.summary;
@@ -275,6 +304,7 @@ export async function syncMatchesToCalendar(matches) {
   return {
     created,
     updated,
+    deleted,
     skipped,
     errors,
     total: matches.length

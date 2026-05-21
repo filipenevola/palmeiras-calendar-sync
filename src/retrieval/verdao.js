@@ -268,7 +268,10 @@ function parseCompetitionTable(html, competition, pageUrl) {
       if (!matchDate) continue;
 
       const locationLower = location.toLowerCase();
-      const isHome = locationLower.includes('barueri') || locationLower.includes('allianz');
+      const isHome =
+        locationLower.includes('barueri') ||
+        locationLower.includes('allianz') ||
+        locationLower.includes('nubank');
       const cleanOpponent = opponent.trim().replace(/^x\s+/i, '').replace(/\s+x$/i, '').trim();
 
       matches.push({
@@ -343,9 +346,11 @@ function parseHomePage(html, _fallbackCompetition, pageUrl) {
       }
 
       const locationLower = location.toLowerCase();
-      const isHome = isPalmeirasLeft ||
-                     locationLower.includes('barueri') ||
-                     locationLower.includes('allianz');
+      const isHome =
+        isPalmeirasLeft ||
+        locationLower.includes('barueri') ||
+        locationLower.includes('allianz') ||
+        locationLower.includes('nubank');
 
       matches.push({
         date: matchDate,
