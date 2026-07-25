@@ -12,9 +12,21 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Deploy to Quave Cloud
-        uses: zcloud-ws/zcloud-deploy-action@main
-        with:
-          env-token: ${{ secrets.QUAVE_CLOUD_ENV_TOKEN }}
-          env: filipenevola-palmeiras-calendar-sync-production
+      # Install the Quave ONE CLI from its official install script (served from
+      # GitHub, not Docker Hub). The previous Docker-container action
+      # (zcloud-ws/zcloud-deploy-action) failed pulling its image from Docker
+      # Hub on the runner; installing the CLI binary avoids that dependency.
+      - name: Install Quave ONE CLI
+        run: |
+          mkdir -p "$RUNNER_TEMP/quaveone"
+          curl -fsSL https://raw.githubusercontent.com/quaveone/cli/main/install.sh \
+            | QUAVEONE_INSTALL_DIR="$RUNNER_TEMP/quaveone" bash
+          echo "$RUNNER_TEMP/quaveone" >> "$GITHUB_PATH"
 
+      - name: Deploy to Quave ONE
+        env:
+          QUAVEONE_ENV_TOKEN: ${{ secrets.QUAVE_CLOUD_ENV_TOKEN }}
+        run: |
+          quaveone deploy \
+            --env "filipenevola-palmeiras-calendar-sync-production" \
+            --wait
