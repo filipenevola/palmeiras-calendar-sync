@@ -21,12 +21,6 @@ if (process.env.SLACK_ERROR_WEBHOOK && !isSlackEnabled) {
   console.warn('[LOGGER] SLACK_ERROR_WEBHOOK not set - Slack notifications disabled');
 }
 
-const CURSOR_TAG = `<@U0A52LNRDK3> repo=filipenevola/palmeiras-calendar-sync, branch=main
-
-Use the Quave ONE MCP to investigate logs and deployment status. Quave ONE IDs: accountId=KPADFfTBDQnk8J2Yv, appId=z5NAMzhWJikLpSZrf, appEnvId=zNp7QCSEWZQX4jzWB.
-
-Investigate and fix this error.`;
-
 const _logger = createLogger({
   appName: 'palmeiras-calendar-sync',
   environment: process.env.NODE_ENV || 'production',
@@ -43,15 +37,6 @@ const _logger = createLogger({
     skipInDevelopment: false,
   },
 });
-
-function withCursorTag(originalFn) {
-  return (message, ...args) => {
-    originalFn(`${message}\n\n${CURSOR_TAG}`, ...args);
-  };
-}
-
-_logger.error = withCursorTag(_logger.error.bind(_logger));
-_logger.warn = withCursorTag(_logger.warn.bind(_logger));
 
 export const logger = _logger;
 
