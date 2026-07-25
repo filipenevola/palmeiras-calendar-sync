@@ -54,6 +54,38 @@ const VERDAO_HEADERS = {
  */
 const FETCH_TIMEOUT_MS = 60_000;
 
+/**
+ * Decodes an HTTP response body respecting its charset.
+ * ptd.verdao.net pages are UTF-8, but the embedded fixtures iframe
+ * (www.verdao.net/campeonato_base.php) is served as windows-1252.
+ * @param {ArrayBuffer} buffer
+ * @param {string|null} contentType
+ * @returns {string}
+ */
+function decodeResponseBody(buffer, contentType) {
+  const bytes = new Uint8Array(buffer);
+  let charset = null;
+
+  const ctMatch = (contentType || '').toLowerCase().match(/charset=["']?([\w-]+)/);
+  if (ctMatch) {
+    charset = ctMatch[1];
+  } else {
+    // No charset header (campeonato_base.php); sniff the <meta> tag from the head bytes.
+    const head = new TextDecoder('latin1').decode(bytes.subarray(0, 4096)).toLowerCase();
+    const metaMatch = head.match(/charset=["']?([\w-]+)/);
+    if (metaMatch) charset = metaMatch[1];
+  }
+
+  if (charset && /(1252|8859-1|latin1)/.test(charset)) charset = 'windows-1252';
+  if (!charset) charset = 'utf-8';
+
+  try {
+    return new TextDecoder(charset).decode(bytes);
+  } catch {
+    return new TextDecoder('utf-8').decode(bytes);
+  }
+}
+
 export async function fetchHTML(url, retries = 4) {
   const attemptErrors = [];
 
@@ -65,10 +97,11 @@ export async function fetchHTML(url, retries = 4) {
         redirect: 'follow',
         signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
       });
-      
+
       if (response.ok) {
-        const html = await response.text();
-        logger.info(`[RETRIEVAL] Success: ${url} - ${html.length} bytes`);
+        const buffer = await response.arrayBuffer();
+        const html = decodeResponseBody(buffer, response.headers.get('content-type'));
+        logger.info(`[RETRIEVAL] Success: ${url} - ${html.length} chars`);
         return html;
       }
       
@@ -370,6 +403,136 @@ function parseHomePage(html, _fallbackCompetition, pageUrl) {
   return matches;
 }
 
+/** A real campeonato_base fixture date cell, e.g. "26/07 - 19h30". */
+const CAMPEONATO_DATE_RE = /\d{1,2}\/\d{1,2}\s*[-–]\s*\d{1,2}h\d{2}/;
+
+/**
+ * Broadcast channel legend used by www.verdao.net/campeonato_base.php.
+ * (Different from the homepage codes handled in parseBroadcast.)
+ */
+const CAMPEONATO_TV_CODES = {
+  '1': 'Globo',
+  '2': 'Record',
+  '3': 'Sportv',
+  '4': 'Amazon Prime',
+  '5': 'YouTube',
+  '6': 'Premiere',
+};
+
+function parseCampeonatoBroadcast(tvText) {
+  const codes = (tvText || '').match(/\d/g);
+  if (!codes) return '';
+  const channels = [];
+  const seen = new Set();
+  for (const code of codes) {
+    const name = CAMPEONATO_TV_CODES[code];
+    if (name && !seen.has(name)) {
+      seen.add(name);
+      channels.push(name);
+    }
+  }
+  return channels.join(', ');
+}
+
+/**
+ * Finds the embedded fixtures iframe (campeonato_base.php) on a competition page.
+ * verdao.net moved the per-competition fixture tables into this iframe.
+ * @param {string} html
+ * @returns {string|null} Absolute iframe URL, or null if none present.
+ */
+function extractCampeonatoIframeUrl(html) {
+  const $ = cheerio.load(html);
+  let iframeUrl = null;
+  $('iframe[src]').each((_i, el) => {
+    const src = $(el).attr('src') || '';
+    if (src.includes('campeonato_base.php')) {
+      iframeUrl = src;
+      return false; // stop at the first match
+    }
+  });
+  if (!iframeUrl) return null;
+  try {
+    return new URL(iframeUrl, VERDAO_BASE_URL).toString();
+  } catch {
+    return iframeUrl;
+  }
+}
+
+/**
+ * Parses the campeonato_base.php fixtures table (turno/returno layout).
+ *
+ * Each round is two rows sharing one opponent (home and away legs). The
+ * opponent cell uses rowspan=2, so cheerio sees it only on the turno row:
+ *   Turno leg (6 cells):   [Rodada, Data-Horário, Adversário, Placar, Local, TV]
+ *   Returno leg (5 cells):  [Rodada, Data-Horário, Placar, Local, TV]  ← opponent inherited
+ *
+ * We iterate every row document-wide using only DIRECT child <td>s so nested
+ * layout tables (standings, regulation, etc.) are naturally ignored: their
+ * rows never have a date-time cell in position 1.
+ *
+ * @param {string} html
+ * @param {string} competition
+ * @param {string} pageUrl
+ * @returns {Match[]}
+ */
+function parseCampeonatoBase(html, competition, pageUrl) {
+  const $ = cheerio.load(html);
+  const matches = [];
+  let carriedOpponent = null;
+
+  $('tr').each((_ri, row) => {
+    const cells = $(row)
+      .children('td')
+      .map((_ci, cell) => $(cell).text().replace(/\s+/g, ' ').trim())
+      .get();
+
+    if (cells.length !== 5 && cells.length !== 6) return;
+
+    let dateStr;
+    let opponentRaw;
+    let location;
+    let tv;
+
+    if (cells.length === 6) {
+      // Turno leg — carries the opponent for its paired returno leg.
+      [, dateStr, opponentRaw, , location, tv] = cells;
+      if (opponentRaw && !/^x$/i.test(opponentRaw) && !/adversário/i.test(opponentRaw)) {
+        carriedOpponent = opponentRaw;
+      }
+    } else {
+      // Returno leg — opponent comes from the turno leg above (rowspan cell).
+      [, dateStr, , location, tv] = cells;
+      opponentRaw = carriedOpponent;
+    }
+
+    // Skip header rows ("Data - Horário", "Rodada") and undefined dates ("A/D")
+    // without noise — only real date cells reach parseDateTime.
+    if (!CAMPEONATO_DATE_RE.test(dateStr || '')) return;
+    if (!opponentRaw) return;
+
+    const matchDate = parseDateTime(dateStr, competition);
+    if (!matchDate) return;
+
+    const locationLower = (location || '').toLowerCase();
+    const isHome =
+      locationLower.includes('barueri') ||
+      locationLower.includes('allianz') ||
+      locationLower.includes('nubank');
+
+    matches.push({
+      date: matchDate,
+      opponent: normalizeOpponentName(opponentRaw.trim()),
+      location: (location || '').trim(),
+      broadcast: parseCampeonatoBroadcast(tv),
+      competition,
+      isHome,
+      source: pageUrl,
+    });
+  });
+
+  return matches;
+}
+
 function parseMatchesFromHTML(html, competition, pageUrl) {
   const isHomePage = pageUrl.endsWith('verdao.net/') || pageUrl.endsWith('verdao.net');
   if (isHomePage) {
@@ -403,7 +566,20 @@ export async function fetchPalmeirasFixtures() {
         }
         
         const matches = parseMatchesFromHTML(html, page.competition, page.url);
-        
+
+        // verdao.net moved per-competition fixture tables into an embedded
+        // iframe (campeonato_base.php). Follow it and parse that table too.
+        const iframeUrl = extractCampeonatoIframeUrl(html);
+        if (iframeUrl) {
+          logger.info(`[RETRIEVAL] ${page.competition}: following fixtures iframe ${iframeUrl}`);
+          const iframeHtml = await fetchHTML(iframeUrl);
+          if (iframeHtml) {
+            const iframeMatches = parseCampeonatoBase(iframeHtml, page.competition, iframeUrl);
+            logger.info(`[RETRIEVAL] ${page.competition}: iframe yielded ${iframeMatches.length} matches`);
+            matches.push(...iframeMatches);
+          }
+        }
+
         logger.info(`[RETRIEVAL] Found ${matches.length} matches from ${page.competition}`);
         allMatches.push(...matches);
         
