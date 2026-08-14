@@ -13,18 +13,20 @@ import * as cheerio from 'cheerio';
 const VERDAO_BASE_URL = 'https://ptd.verdao.net';
 
 /**
- * Generates the list of pages to scrape based on current year
- * If we're past December 20th, use next year instead
+ * Generates the list of pages to scrape based on the current season.
+ * The Paulista page is seasonal: after March, the next edition is the only
+ * relevant Paulista page, while the other competitions remain on the current
+ * calendar year until the December rollover.
  * @returns {Array<{url: string, competition: string}>}
  */
-export function getVerdaoPages() {
-  const now = new Date();
+export function getVerdaoPages(now = new Date()) {
   const currentYear = now.getFullYear();
   // If we're past December 20th, use next year for URLs
   const year = (now.getMonth() === 11 && now.getDate() > 20) ? currentYear + 1 : currentYear;
+  const paulistaYear = now.getMonth() <= 2 ? currentYear : currentYear + 1;
   return [
     { url: `${VERDAO_BASE_URL}/brasileirao-${year}/`, competition: `Brasileirão ${year}` },
-    { url: `${VERDAO_BASE_URL}/paulista-${year}/`, competition: `Paulista ${year}` },
+    { url: `${VERDAO_BASE_URL}/paulista-${paulistaYear}/`, competition: `Paulista ${paulistaYear}` },
     { url: `${VERDAO_BASE_URL}/copa-do-brasil-${year}/`, competition: `Copa do Brasil ${year}` },
     { url: `${VERDAO_BASE_URL}/libertadores-${year}/`, competition: `Libertadores ${year}` },
     { url: `${VERDAO_BASE_URL}/`, competition: 'Próximos Jogos' }, // Home page
@@ -597,4 +599,3 @@ export async function fetchPalmeirasFixtures() {
     throw err;
   }
 }
-

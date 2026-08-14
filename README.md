@@ -11,7 +11,7 @@ Automatically sync Palmeiras fixtures to your Google Calendar.
 - 🏠 Shows home (🏠) vs away (✈️) games
 - 📺 Shows broadcast channels when available
 - ⏰ 1-hour and 15-minute reminders
-- 🏆 Covers all competitions (Brasileirão, Copa do Brasil, Libertadores, Paulistão)
+- 🏆 Covers all competitions (Brasileirão, Copa do Brasil, Libertadores, and the current/upcoming Paulistão edition)
 
 ## Data Source
 
