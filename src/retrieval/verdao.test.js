@@ -53,4 +53,20 @@ describe('fetchHTMLWithCache', () => {
     const result = await fetchHTMLWithCache('https://ptd.verdao.net/never-cached/', 1);
     expect(result).toEqual({ html: null, source: 'unavailable', savedAt: null });
   });
+
+  test('can read cache without attempting the network', async () => {
+    const { fetchHTMLWithCache } = await import('./verdao.js');
+    const url = 'https://ptd.verdao.net/cache-only/';
+    globalThis.fetch = mock(async () => new Response('<html>cached</html>', { status: 200 }));
+    await fetchHTMLWithCache(url, 1);
+
+    globalThis.fetch = mock(async () => {
+      throw new Error('network should not be called');
+    });
+    const result = await fetchHTMLWithCache(url, 1, { allowNetwork: false });
+
+    expect(result.source).toBe('cache');
+    expect(result.html).toContain('cached');
+    expect(globalThis.fetch).not.toHaveBeenCalled();
+  });
 });

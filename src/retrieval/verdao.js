@@ -188,15 +188,17 @@ export async function fetchHTML(url, retries = DEFAULT_FETCH_RETRIES) {
  * temporarily blackholes the Quave ONE pod, use the last known-good HTML so a
  * transient source outage cannot turn a healthy calendar into an empty sync.
  */
-export async function fetchHTMLWithCache(url, retries = DEFAULT_FETCH_RETRIES) {
-  const html = await fetchHTML(url, retries);
-  if (html) {
-    try {
-      await saveCachedHTML(url, html);
-    } catch (error) {
-      logger.info(`[RETRIEVAL] Could not update cache for ${url}: ${error.message}`);
+export async function fetchHTMLWithCache(url, retries = DEFAULT_FETCH_RETRIES, { allowNetwork = true } = {}) {
+  if (allowNetwork) {
+    const html = await fetchHTML(url, retries);
+    if (html) {
+      try {
+        await saveCachedHTML(url, html);
+      } catch (error) {
+        logger.info(`[RETRIEVAL] Could not update cache for ${url}: ${error.message}`);
+      }
+      return { html, source: 'live', savedAt: null };
     }
-    return { html, source: 'live', savedAt: null };
   }
 
   const cached = await readCachedHTML(url);
@@ -633,15 +635,43 @@ export async function fetchPalmeirasFixtures() {
     
     const allMatches = [];
     let availablePages = 0;
+    let ptdLiveUnavailable = false;
     const pages = getVerdaoPages();
     
     for (const page of pages) {
       try {
         logger.info(`[RETRIEVAL] Fetching ${page.competition} from ${page.url}...`);
-        const pageResult = await fetchHTMLWithCache(page.url);
+        const pageResult = await fetchHTMLWithCache(page.url, DEFAULT_FETCH_RETRIES, {
+          allowNetwork: !ptdLiveUnavailable,
+        });
         const html = pageResult.html;
+
+        // A blocked ptd.verdao.net attempt is host-wide in the Quave ONE pod.
+        // Do not repeat the same 15-second blackhole for every remaining page;
+        // use their persistent caches and retry the live host next sync.
+        if (pageResult.source !== 'live') {
+          ptdLiveUnavailable = true;
+        }
         
         if (html === null) {
+          // Brasileirão's actual fixtures live on the legacy www.verdao.net
+          // host, which has a different IP and remains reachable when the PTD
+          // WordPress host drops Quave ONE traffic. Use it as an independent
+          // fallback so a cold cache can still perform a useful sync.
+          if (page.competition.startsWith('Brasileirão')) {
+            const year = page.competition.match(/\b20\d{2}\b/)?.[0] || new Date().getFullYear();
+            const legacyUrl = `https://www.verdao.net/campeonato_base.php?c=2&ano=${year}`;
+            logger.info(`[RETRIEVAL] ${page.competition}: trying reachable legacy fixtures host ${legacyUrl}`);
+            const legacyResult = await fetchHTMLWithCache(legacyUrl);
+            if (legacyResult.html) {
+              const legacyMatches = parseCampeonatoBase(legacyResult.html, page.competition, legacyUrl);
+              logger.info(`[RETRIEVAL] ${page.competition}: legacy host yielded ${legacyMatches.length} matches`);
+              allMatches.push(...legacyMatches);
+              availablePages += 1;
+              await new Promise(r => setTimeout(r, 1000));
+              continue;
+            }
+          }
           logger.info(`[RETRIEVAL] Skipping ${page.competition} - no live response or cached copy available`);
           continue;
         }
