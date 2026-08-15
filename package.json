@@ -6,7 +6,8 @@
   "type": "module",
   "scripts": {
     "start": "bun run src/index.js",
-    "sync": "bun run src/index.js"
+    "sync": "bun run src/index.js",
+    "test": "bun test"
   },
   "keywords": ["palmeiras", "calendar", "football", "scraper", "verdao.net"],
   "author": "Filipe Névola",

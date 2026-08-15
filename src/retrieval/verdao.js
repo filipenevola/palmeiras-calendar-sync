@@ -9,6 +9,9 @@
 import { logger, ensureError } from '../logger.js';
 import { normalizeOpponentName } from '../processing.js';
 import * as cheerio from 'cheerio';
+import { createHash } from 'crypto';
+import { mkdir, readFile, rename, writeFile } from 'fs/promises';
+import { join } from 'path';
 
 const VERDAO_BASE_URL = 'https://ptd.verdao.net';
 
@@ -65,7 +68,44 @@ const VERDAO_HEADERS = {
  * @param {number} retries - Number of retry attempts
  * @returns {Promise<string|null>} - HTML content or null
  */
-const FETCH_TIMEOUT_MS = 60_000;
+// Verdão normally answers in well under a second. A 60-second timeout with four
+// attempts made one temporary network blackhole consume four minutes per page
+// (and produced a Slack message for every attempt). Keep the live probe short
+// and fall back to the last successful response instead.
+const FETCH_TIMEOUT_MS = 15_000;
+const DEFAULT_FETCH_RETRIES = 2;
+const CACHE_DIR_NAME = 'verdao-html-cache';
+
+function getCacheDir() {
+  return join(process.env.DATA_DIR || '/data', CACHE_DIR_NAME);
+}
+
+function getCacheFile(url) {
+  const key = createHash('sha256').update(url).digest('hex');
+  return join(getCacheDir(), `${key}.json`);
+}
+
+async function saveCachedHTML(url, html) {
+  const cacheDir = getCacheDir();
+  const cacheFile = getCacheFile(url);
+  const temporaryFile = `${cacheFile}.${process.pid}.tmp`;
+  await mkdir(cacheDir, { recursive: true });
+  await writeFile(temporaryFile, JSON.stringify({ url, savedAt: new Date().toISOString(), html }), 'utf-8');
+  await rename(temporaryFile, cacheFile);
+}
+
+async function readCachedHTML(url) {
+  try {
+    const cached = JSON.parse(await readFile(getCacheFile(url), 'utf-8'));
+    if (cached.url !== url || typeof cached.html !== 'string' || !cached.html) return null;
+    return cached;
+  } catch (error) {
+    if (error?.code !== 'ENOENT') {
+      logger.info(`[RETRIEVAL] Ignoring unreadable cache for ${url}: ${error.message}`);
+    }
+    return null;
+  }
+}
 
 /**
  * Decodes an HTTP response body respecting its charset.
@@ -99,7 +139,7 @@ function decodeResponseBody(buffer, contentType) {
   }
 }
 
-export async function fetchHTML(url, retries = 4) {
+export async function fetchHTML(url, retries = DEFAULT_FETCH_RETRIES) {
   const attemptErrors = [];
 
   for (let i = 0; i < retries; i++) {
@@ -125,11 +165,11 @@ export async function fetchHTML(url, retries = 4) {
       
       const detail = `HTTP ${response.status} (${response.statusText})`;
       attemptErrors.push(detail);
-      logger.warn(`[RETRIEVAL] Attempt ${i + 1}/${retries} ${detail} for ${url}`);
+      logger.info(`[RETRIEVAL] Attempt ${i + 1}/${retries} ${detail} for ${url}`);
     } catch (error) {
       const detail = `${error.name}: ${error.message}`;
       attemptErrors.push(detail);
-      logger.warn(`[RETRIEVAL] Attempt ${i + 1}/${retries} failed for ${url}: ${detail}`);
+      logger.info(`[RETRIEVAL] Attempt ${i + 1}/${retries} failed for ${url}: ${detail}`);
     }
     
     if (i < retries - 1) {
@@ -139,8 +179,34 @@ export async function fetchHTML(url, retries = 4) {
     }
   }
   
-  logger.warn(`[RETRIEVAL] All ${retries} attempts failed for ${url}. Errors: ${attemptErrors.join(' | ')}`);
+  logger.info(`[RETRIEVAL] All ${retries} attempts failed for ${url}. Errors: ${attemptErrors.join(' | ')}`);
   return null;
+}
+
+/**
+ * Fetches a page and persists every successful response. When ptd.verdao.net
+ * temporarily blackholes the Quave ONE pod, use the last known-good HTML so a
+ * transient source outage cannot turn a healthy calendar into an empty sync.
+ */
+export async function fetchHTMLWithCache(url, retries = DEFAULT_FETCH_RETRIES) {
+  const html = await fetchHTML(url, retries);
+  if (html) {
+    try {
+      await saveCachedHTML(url, html);
+    } catch (error) {
+      logger.info(`[RETRIEVAL] Could not update cache for ${url}: ${error.message}`);
+    }
+    return { html, source: 'live', savedAt: null };
+  }
+
+  const cached = await readCachedHTML(url);
+  if (cached) {
+    const ageMinutes = Math.max(0, Math.round((Date.now() - Date.parse(cached.savedAt)) / 60_000));
+    logger.info(`[RETRIEVAL] Using cached HTML for ${url} (${ageMinutes} minutes old)`);
+    return { html: cached.html, source: 'cache', savedAt: cached.savedAt };
+  }
+
+  return { html: null, source: 'unavailable', savedAt: null };
 }
 
 /**
@@ -566,17 +632,20 @@ export async function fetchPalmeirasFixtures() {
     logger.info(`[RETRIEVAL] Current date/time: ${now.toISOString()}`);
     
     const allMatches = [];
+    let availablePages = 0;
     const pages = getVerdaoPages();
     
     for (const page of pages) {
       try {
         logger.info(`[RETRIEVAL] Fetching ${page.competition} from ${page.url}...`);
-        const html = await fetchHTML(page.url);
+        const pageResult = await fetchHTMLWithCache(page.url);
+        const html = pageResult.html;
         
         if (html === null) {
-          logger.info(`[RETRIEVAL] Skipping ${page.competition} - page not available or unreachable`);
+          logger.info(`[RETRIEVAL] Skipping ${page.competition} - no live response or cached copy available`);
           continue;
         }
+        availablePages += 1;
         
         const matches = parseMatchesFromHTML(html, page.competition, page.url);
 
@@ -585,7 +654,8 @@ export async function fetchPalmeirasFixtures() {
         const iframeUrl = extractCampeonatoIframeUrl(html);
         if (iframeUrl) {
           logger.info(`[RETRIEVAL] ${page.competition}: following fixtures iframe ${iframeUrl}`);
-          const iframeHtml = await fetchHTML(iframeUrl);
+          const iframeResult = await fetchHTMLWithCache(iframeUrl);
+          const iframeHtml = iframeResult.html;
           if (iframeHtml) {
             const iframeMatches = parseCampeonatoBase(iframeHtml, page.competition, iframeUrl);
             logger.info(`[RETRIEVAL] ${page.competition}: iframe yielded ${iframeMatches.length} matches`);
@@ -600,6 +670,10 @@ export async function fetchPalmeirasFixtures() {
       } catch (err) {
         logger.warn(`[RETRIEVAL] Error processing ${page.competition}: ${err.message}`);
       }
+    }
+
+    if (availablePages === 0) {
+      throw new Error('Verdão retrieval unavailable: no live pages or cached copies could be loaded');
     }
     
     logger.info(`[RETRIEVAL] Total matches found: ${allMatches.length}`);
