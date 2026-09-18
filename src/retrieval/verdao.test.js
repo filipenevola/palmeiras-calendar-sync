@@ -16,6 +16,17 @@ afterEach(async () => {
   await rm(dataDir, { recursive: true, force: true });
 });
 
+describe('parseDateTime', () => {
+  test('parses verdao date cells with accidental double slashes', async () => {
+    const { parseDateTime } = await import('./verdao.js');
+    const date = parseDateTime('16//9 – 19h00', 'Brasileirão 2026');
+    expect(date).toBeInstanceOf(Date);
+    expect(date.getUTCFullYear()).toBe(2026);
+    expect(date.getUTCMonth()).toBe(8);
+    expect(date.getUTCDate()).toBe(16);
+  });
+});
+
 describe('fetchHTMLWithCache', () => {
   test('stores a successful response and reuses it when the source times out', async () => {
     const { fetchHTMLWithCache } = await import('./verdao.js');

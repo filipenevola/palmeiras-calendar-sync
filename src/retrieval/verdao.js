@@ -270,15 +270,21 @@ function createDateInSaoPaulo(year, month, day, hour, minute) {
   return new Date(targetUTC.getTime() + offsetMs);
 }
 
-function parseDateTime(dateTimeStr, competition) {
-  if (/A\s*\/\s*D/i.test(dateTimeStr)) {
-    logger.info(`[RETRIEVAL] Skipping match with undefined date/time (A/D): ${dateTimeStr}`);
+/** Collapse typos like "16//9" from verdao.net table cells before parsing. */
+function normalizeVerdaoDateTime(dateTimeStr) {
+  return dateTimeStr.replace(/\s+/g, ' ').replace(/\/+/g, '/').trim();
+}
+
+export function parseDateTime(dateTimeStr, competition) {
+  const normalized = normalizeVerdaoDateTime(dateTimeStr);
+  if (/A\s*\/\s*D/i.test(normalized)) {
+    logger.info(`[RETRIEVAL] Skipping match with undefined date/time (A/D): ${normalized}`);
     return null;
   }
 
-  const match = dateTimeStr.match(/(\d{1,2})\/(\d{1,2})\s*[–-]\s*(\d{1,2})h(\d{2})/);
+  const match = normalized.match(/(\d{1,2})\/(\d{1,2})\s*[–-]\s*(\d{1,2})h(\d{2})/);
   if (!match) {
-    logger.warn(`[RETRIEVAL] Could not parse date-time: ${dateTimeStr}`);
+    logger.warn(`[RETRIEVAL] Could not parse date-time: ${normalized}`);
     return null;
   }
   
@@ -588,7 +594,8 @@ function parseCampeonatoBase(html, competition, pageUrl) {
 
     // Skip header rows ("Data - Horário", "Rodada") and undefined dates ("A/D")
     // without noise — only real date cells reach parseDateTime.
-    if (!CAMPEONATO_DATE_RE.test(dateStr || '')) return;
+    dateStr = normalizeVerdaoDateTime(dateStr || '');
+    if (!CAMPEONATO_DATE_RE.test(dateStr)) return;
     if (!opponentRaw) return;
 
     const matchDate = parseDateTime(dateStr, competition);
