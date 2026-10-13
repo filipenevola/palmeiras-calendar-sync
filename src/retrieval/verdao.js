@@ -716,8 +716,8 @@ export async function fetchPalmeirasFixtures() {
     logger.info(`[RETRIEVAL] Total matches found: ${allMatches.length}`);
     return allMatches;
   } catch (err) {
-    const error = ensureError(err);
-    logger.error('[RETRIEVAL] Failed to fetch fixtures', error);
+    // Reported once by sync(), not here.
+    logger.info(`[RETRIEVAL] Failed to fetch fixtures: ${ensureError(err).message}`);
     throw err;
   }
 }

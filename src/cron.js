@@ -26,7 +26,8 @@ export function startCronScheduler() {
       await sync();
       logger.info('✅ Scheduled sync completed successfully');
     } catch (err) {
-      logger.error('❌ Scheduled sync failed', err);
+      // sync() already sent this to Slack and Filipe Nevola Factory.
+      logger.info(`❌ Scheduled sync failed: ${err.message}`);
     }
   }, {
     scheduled: true,

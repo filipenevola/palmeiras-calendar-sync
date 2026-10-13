@@ -58,8 +58,18 @@ The app is configured to deploy automatically to Quave Cloud via GitHub Actions.
 | `GOOGLE_CREDENTIALS` | Base64 encoded service account JSON |
 | `GOOGLE_CALENDAR_ID` | Google Calendar ID (or `primary`) |
 | `SLACK_ERROR_WEBHOOK` | Slack webhook URL for error notifications (optional) |
+| `FACTORY_WORK_BEARER` | Work controller `WORK_BEARER`. Sends real sync failures to Filipe Nevola Factory (optional) |
+| `FACTORY_WORK_URL` | Work controller URL override (default: the `work-controller-production-filipenevola` host) |
 | `CRON_SCHEDULE` | Cron schedule for daily sync (default: `"0 2 * * *"` = 2 AM UTC daily) |
 | `ZCLOUD_USER_TOKEN` | Quave Cloud environment token (required for deployment) |
+
+## Failure reporting
+
+A failed sync, or calendar events that fail to write, is reported **once**, from
+`sync()`. It is sent to **Filipe Nevola Factory** (the Warren work controller,
+`POST /work`), which investigates and opens a fix PR or asks on GitHub. Slack gets
+one message with the error and the Factory work ID. The same failure class shares
+a fingerprint, so repeats join the open work item instead of starting new ones.
 
 ## How It Works
 
