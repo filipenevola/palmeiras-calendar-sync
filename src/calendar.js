@@ -293,7 +293,8 @@ export async function syncMatchesToCalendar(matches) {
       error.fixture = event.summary;
       error.fixtureId = fixtureId;
       const errorMsg = `${event.summary} - ${error.message}`;
-      logger.error(`[CALENDAR] Failed to sync event: ${errorMsg}`, error);
+      // Collected in errors and reported once by sync().
+      logger.info(`[CALENDAR] Failed to sync event: ${errorMsg}`);
       errors.push({ fixture: event.summary, error: error.message });
       skipped++;
     }

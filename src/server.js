@@ -438,8 +438,8 @@ export function createServer() {
           
           // Run sync in background
           sync().catch(err => {
-            const error = ensureError(err);
-            logger.error('[SERVER] Background sync failed', error);
+            // sync() already sent this to Slack and Filipe Nevola Factory.
+            logger.info(`[SERVER] Background sync failed: ${ensureError(err).message}`);
           });
           
           return Response.json({ 

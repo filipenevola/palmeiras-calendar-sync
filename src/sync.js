@@ -13,15 +13,14 @@ import { GOOGLE_CREDENTIALS } from './config.js';
 import { fetchPalmeirasFixtures } from './retrieval/verdao.js';
 import { processMatches } from './processing.js';
 import { syncMatchesToCalendar } from './calendar.js';
+import { reportToFactory, handoffText } from './factory.js';
 
 function validateEnv() {
   const missing = [];
   if (!GOOGLE_CREDENTIALS) missing.push('GOOGLE_CREDENTIALS');
   
   if (missing.length > 0) {
-    const errorMsg = `Missing environment variables: ${missing.join(', ')}`;
-    logger.error('[SYNC] Missing environment variables', new Error(errorMsg));
-    throw new Error(errorMsg);
+    throw new Error(`Missing environment variables: ${missing.join(', ')}`);
   }
 }
 
@@ -91,6 +90,13 @@ export async function sync() {
     
     logger.info('══════════════════════════════════════════════════');
     logger.info('✅ Sync completed successfully', result);
+
+    // Events that failed to write are real errors even though the run finished.
+    if (syncResult.errors.length > 0) {
+      const summary = syncResult.errors.map(e => `${e.fixture}: ${e.error}`).join('; ');
+      const failure = new Error(`${syncResult.errors.length} calendar event(s) failed to sync: ${summary}`);
+      logger.error(`❌ ${failure.message}\n\n${handoffText(await reportToFactory(failure))}`, failure);
+    }
     
     await saveRunStatus(result);
     return result;
@@ -104,8 +110,10 @@ export async function sync() {
       error: err.message,
     };
     
+    // The single place a failed sync is reported: Factory investigates, Slack says what happened.
     const error = ensureError(err);
-    logger.error('❌ Sync failed', error);
+    const factory = await reportToFactory(error);
+    logger.error(`❌ Sync failed: ${error.message}\n\n${handoffText(factory)}`, error);
     await saveRunStatus(result);
     throw err;
   }
