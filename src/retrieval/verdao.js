@@ -562,7 +562,7 @@ function extractCampeonatoIframeUrl(html) {
  * @param {string} pageUrl
  * @returns {Match[]}
  */
-function parseCampeonatoBase(html, competition, pageUrl) {
+export function parseCampeonatoBase(html, competition, pageUrl) {
   const $ = cheerio.load(html);
   const matches = [];
   let carriedOpponent = null;
@@ -573,7 +573,7 @@ function parseCampeonatoBase(html, competition, pageUrl) {
       .map((_ci, cell) => $(cell).text().replace(/\s+/g, ' ').trim())
       .get();
 
-    if (cells.length !== 5 && cells.length !== 6) return;
+    if (cells.length < 4 || cells.length > 6) return;
 
     let dateStr;
     let opponentRaw;
@@ -583,12 +583,20 @@ function parseCampeonatoBase(html, competition, pageUrl) {
     if (cells.length === 6) {
       // Turno leg — carries the opponent for its paired returno leg.
       [, dateStr, opponentRaw, , location, tv] = cells;
-      if (opponentRaw && !/^x$/i.test(opponentRaw) && !/adversário/i.test(opponentRaw)) {
-        carriedOpponent = opponentRaw;
-      }
-    } else {
+      const isRealOpponent =
+        opponentRaw && !/^x$/i.test(opponentRaw) && !/adversário/i.test(opponentRaw);
+      // Never let a returno leg inherit an opponent from an earlier round.
+      carriedOpponent = isRealOpponent ? opponentRaw : null;
+      opponentRaw = carriedOpponent;
+    } else if (cells.length === 5) {
       // Returno leg — opponent comes from the turno leg above (rowspan cell).
       [, dateStr, , location, tv] = cells;
+      opponentRaw = carriedOpponent;
+    } else {
+      // Returno leg whose Rodada cell is also rowspan=2:
+      //   [Data-Horário, Placar, Local, TV]
+      // Previously dropped silently, losing the second (often away) leg.
+      [dateStr, , location, tv] = cells;
       opponentRaw = carriedOpponent;
     }
 

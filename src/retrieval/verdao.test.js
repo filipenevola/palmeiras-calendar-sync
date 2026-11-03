@@ -81,3 +81,47 @@ describe('fetchHTMLWithCache', () => {
     expect(globalThis.fetch).not.toHaveBeenCalled();
   });
 });
+
+describe('parseCampeonatoBase', () => {
+  const nextYear = new Date().getFullYear() + 1;
+  const competition = `Brasileirão ${nextYear}`;
+  const url = 'https://www.verdao.net/campeonato_base.php?c=2';
+
+  test('keeps the returno (away) leg when the Rodada cell is also rowspan=2', async () => {
+    const { parseCampeonatoBase } = await import('./verdao.js');
+    const html = `<table>
+      <tr><td rowspan="2">1</td><td>10/05 - 16h00</td><td rowspan="2">Santos</td><td></td><td>Allianz Parque</td><td>1</td></tr>
+      <tr><td>20/09 - 18h30</td><td></td><td>Vila Belmiro</td><td>3</td></tr>
+    </table>`;
+    const matches = parseCampeonatoBase(html, competition, url);
+    expect(matches).toHaveLength(2);
+    expect(matches.map((m) => [m.opponent, m.isHome])).toEqual([
+      ['Santos', true],
+      ['Santos', false],
+    ]);
+  });
+
+  test('still parses the standard 5-cell returno leg', async () => {
+    const { parseCampeonatoBase } = await import('./verdao.js');
+    const html = `<table>
+      <tr><td>1</td><td>10/05 - 16h00</td><td rowspan="2">Santos</td><td></td><td>Allianz Parque</td><td>1</td></tr>
+      <tr><td>20</td><td>20/09 - 18h30</td><td></td><td>Vila Belmiro</td><td>3</td></tr>
+    </table>`;
+    const matches = parseCampeonatoBase(html, competition, url);
+    expect(matches.map((m) => [m.opponent, m.isHome])).toEqual([
+      ['Santos', true],
+      ['Santos', false],
+    ]);
+  });
+
+  test('does not carry an opponent from an earlier round', async () => {
+    const { parseCampeonatoBase } = await import('./verdao.js');
+    const html = `<table>
+      <tr><td>1</td><td>10/05 - 16h00</td><td>Santos</td><td></td><td>Allianz Parque</td><td>1</td></tr>
+      <tr><td>2</td><td>17/05 - 16h00</td><td>x</td><td></td><td>Maracanã</td><td>1</td></tr>
+      <tr><td>21</td><td>27/09 - 16h00</td><td></td><td>Allianz Parque</td><td>1</td></tr>
+    </table>`;
+    const matches = parseCampeonatoBase(html, competition, url);
+    expect(matches.map((m) => m.opponent)).toEqual(['Santos']);
+  });
+});
