@@ -13,7 +13,7 @@ import { GOOGLE_CREDENTIALS } from './config.js';
 import { fetchPalmeirasFixtures } from './retrieval/verdao.js';
 import { processMatches } from './processing.js';
 import { syncMatchesToCalendar } from './calendar.js';
-import { reportToFactory, handoffText } from './factory.js';
+import { t3Request } from './t3.js';
 
 function validateEnv() {
   const missing = [];
@@ -95,7 +95,7 @@ export async function sync() {
     if (syncResult.errors.length > 0) {
       const summary = syncResult.errors.map(e => `${e.fixture}: ${e.error}`).join('; ');
       const failure = new Error(`${syncResult.errors.length} calendar event(s) failed to sync: ${summary}`);
-      logger.error(`❌ ${failure.message}\n\n${handoffText(await reportToFactory(failure))}`, failure);
+      logger.error(t3Request(`❌ ${failure.message}`), failure);
     }
     
     await saveRunStatus(result);
@@ -110,10 +110,9 @@ export async function sync() {
       error: err.message,
     };
     
-    // The single place a failed sync is reported: Factory investigates, Slack says what happened.
+    // The single place a failed sync is reported: the Slack error mentions t3fn, which investigates.
     const error = ensureError(err);
-    const factory = await reportToFactory(error);
-    logger.error(`❌ Sync failed: ${error.message}\n\n${handoffText(factory)}`, error);
+    logger.error(t3Request(`❌ Sync failed: ${error.message}`), error);
     await saveRunStatus(result);
     throw err;
   }

@@ -26,7 +26,7 @@ export function startCronScheduler() {
       await sync();
       logger.info('✅ Scheduled sync completed successfully');
     } catch (err) {
-      // sync() already sent this to Slack and Filipe Nevola Factory.
+      // sync() already sent this to Slack, where it mentions t3fn.
       logger.info(`❌ Scheduled sync failed: ${err.message}`);
     }
   }, {
