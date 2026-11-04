@@ -438,7 +438,7 @@ export function createServer() {
           
           // Run sync in background
           sync().catch(err => {
-            // sync() already sent this to Slack and Filipe Nevola Factory.
+            // sync() already sent this to Slack, where it mentions t3fn.
             logger.info(`[SERVER] Background sync failed: ${ensureError(err).message}`);
           });
           
